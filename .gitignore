@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 과제 요구사항 + 공고 원문 비공개 (제안서 11. 고려 사항)
+.env
+chroma_db/
+data/raw/
