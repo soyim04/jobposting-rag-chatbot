@@ -221,6 +221,7 @@ __marimo__/
 .env
 chroma_db/
 data/raw/
+data/chunks/
 
 # Claude Code 개인 설정
 .claude/settings.local.json
