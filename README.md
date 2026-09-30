@@ -46,11 +46,16 @@
 ## 폴더 구조
 
 ```
-├── docs/        # 제안서
-├── eval/        # 평가셋
+├── docs/                        # 제안서
+├── eval/                        # 평가셋
 ├── data/
-│   └── raw/     # 공고 원문 (저장소에 올리지 않음)
-└── src/         # 소스 코드 (2단계부터)
+│   ├── README.md                # 데이터 카드 (출처, 문서 수, 제외 기준, 컬럼 설명)
+│   ├── postings.csv             # 공고별 상태와 사용·제외 여부
+│   ├── collection_summary.csv   # 수집 실행 기록
+│   └── raw/                     # 공고 원문 (저장소에 올리지 않음)
+├── src/
+│   └── collect_jumpit.py        # 점핏 공고 수집 스크립트
+└── requirements.txt
 ```
 
 ## 평가
@@ -62,9 +67,24 @@
 ## 데이터 출처 및 이용
 
 - 출처: [점핏](https://jumpit.saramin.co.kr) 개발자 채용공고
+- 현재 데이터: 2026-09-30 수집, 사용 문서 101건 (자세한 내용은 [데이터 카드](data/README.md))
 - robots.txt상 공고 목록·상세 페이지는 수집 제한 경로가 아닙니다 (2026.09.29 확인).
 - 사람인 회원약관 제19조에 따라 비상업 학습 목적으로만 사용하며, 공고 원문은 저장소에 공개하지 않습니다.
 
 ## 실행 방법
 
-개발 예정
+Python 3.13 기준입니다.
+
+```bash
+# 1. 가상환경 만들기 및 활성화 (Windows)
+python -m venv .venv
+.venv\Scripts\activate
+
+# 2. 패키지 설치
+pip install -r requirements.txt
+
+# 3. 점핏 공고 수집 (다시 실행하면 새 공고 추가·변경 반영·마감 처리)
+python src/collect_jumpit.py
+```
+
+수집 결과는 `data/postings.csv`, `data/collection_summary.csv`, `data/raw/`에 저장됩니다. 챗봇 실행 방법은 개발 후 추가할 예정입니다.

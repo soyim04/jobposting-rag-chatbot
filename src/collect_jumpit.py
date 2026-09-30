@@ -178,13 +178,14 @@ def main():
             "closed_at": (detail.get("closedAt") or "상시")[:10],
             "content_hash": h, "char_count": chars,
         })
+        # 걸리는 사유를 모두 기록한다 (한 공고가 여러 사유에 해당할 수 있음)
+        reasons = []
         missing = [name for key, name in REQUIRED_FIELDS.items() if not clean(detail.get(key))]
         if missing:
-            row.update({"included": "N", "exclude_reason": f"필수 항목 미기재 ({'/'.join(missing)})"})
-        elif chars < MIN_BODY_CHARS:
-            row.update({"included": "N", "exclude_reason": f"본문 {MIN_BODY_CHARS}자 미만"})
-        else:
-            row.update({"included": "Y", "exclude_reason": ""})
+            reasons.append(f"필수 항목 미기재 ({'/'.join(missing)})")
+        if chars < MIN_BODY_CHARS:
+            reasons.append(f"본문 {MIN_BODY_CHARS}자 미만")
+        row.update({"included": "N" if reasons else "Y", "exclude_reason": "; ".join(reasons)})
         rows[pid] = row
         if i % 20 == 0:
             print(f"  상세 조회 진행: {i}/{len(listing)}")
@@ -202,8 +203,9 @@ def main():
     excluded = [r for r in rows.values() if r["included"] == "N"]
     reasons = {}
     for r in excluded:
-        key = r["exclude_reason"].split(" (")[0]
-        reasons[key] = reasons.get(key, 0) + 1
+        for reason in r["exclude_reason"].split("; "):
+            key = reason.split(" (")[0]
+            reasons[key] = reasons.get(key, 0) + 1
     summary = {
         "수집일": today, "출처": "점핏",
         "목록 공고 수": len(listing), "수집 대상": len(in_scope),
