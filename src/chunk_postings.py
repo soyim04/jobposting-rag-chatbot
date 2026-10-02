@@ -142,6 +142,40 @@ def load_used_postings(postings_csv):
         return [r for r in csv.DictReader(f) if r["included"] == "Y"]
 
 
+def format_career(row):
+    if row["newcomer"] == "Y" and row["career_min"] == "0":
+        return "신입"
+    return f"{row['career_min']}~{row['career_max']}년"
+
+
+def build_overview_chunk(row, base_meta, job_categories, tech_stacks):
+    """docs/step3_metadata.md > 공고 개요 청크: 학력·근무지 같은 공고 정보를 검색할 수 있게 본문으로 만든다.
+
+    마감 '상태'는 시간이 지나면 틀리므로 넣지 않고 마감일만 넣는다. 전략 A·B 모두 같은 청크 1개.
+    """
+    body = "\n".join([
+        f"회사: {row['company']}",
+        f"공고명: {row['title']}",
+        f"직무: {', '.join(job_categories)}",
+        f"경력: {format_career(row)}",
+        f"학력: {row['education']}",
+        f"근무지: {row['location']}",
+        f"마감일: {row['closed_at']}",
+        f"기술스택: {', '.join(tech_stacks)}",
+    ])
+    chunk = dict(base_meta)
+    chunk.update({
+        "chunk_id": f"{row['posting_id']}_overview_1_{base_meta['strategy']}",
+        "section": "공고 개요",
+        "section_key": "overview",
+        "chunk_index_in_section": 1,
+        "chunk_total_in_section": 1,
+        "char_count": len(body),
+        "text": f"[{row['company']}/{row['title']}/공고 개요]\n{body}",
+    })
+    return chunk
+
+
 def build_chunks_for_posting(row, strategy):
     raw_path = ROOT / row["raw_path"]
     detail = json.loads(raw_path.read_text(encoding="utf-8"))
@@ -158,6 +192,8 @@ def build_chunks_for_posting(row, strategy):
         "career_min": int(row["career_min"]),
         "career_max": int(row["career_max"]),
         "newcomer": row["newcomer"] == "Y",
+        "education": row["education"],
+        "location": row["location"],
         "closed_at": row["closed_at"],
         "status": row["status"],
         "collected_at": collected_at,
@@ -166,7 +202,7 @@ def build_chunks_for_posting(row, strategy):
         "strategy": strategy,
     }
 
-    chunks = []
+    chunks = [build_overview_chunk(row, base_meta, job_categories, tech_stacks)]
     for field in FIELDS:
         text = clean(detail.get(field))
         if is_empty(text):
