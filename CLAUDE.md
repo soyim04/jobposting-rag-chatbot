@@ -38,7 +38,7 @@
 
 ## 폴더 구조
 
-- `docs/proposal.pdf` 제안서 · `eval/eval_set.xlsx` 평가셋
+- `docs/proposal.pdf` 제안서 · `eval/eval_set.csv` 평가셋 30문항 (`eval/README.md` 채점 기준) · `eval/eval_set.xlsx` 초안(이력용)
 - `src/collect_jumpit.py` 점핏 수집 스크립트
 - `src/posting_status.py` 오늘 날짜 기준 마감 여부 판정 (`effective_status`)
 - `src/chunk_postings.py` 청킹 (`eval` 기본값: 9/30 스냅샷 → `data/chunks/eval/`, `service`: 최신 → `data/chunks/service/`)
@@ -58,8 +58,8 @@
 
 - 평가 기준 데이터는 **2026-09-30 수집본으로 고정**한다. 재수집해도 평가 정답이 흔들리지 않게 한다.
   평가에는 `data/eval_snapshot_2026-09-30/postings.csv`와 `data/chunks/eval/`만 쓰고, `data/postings.csv`는 서비스용이다.
-- 지금 평가셋(34문항)은 공고 12건 기준 초안이다. 4단계에서 수집 데이터 기준으로 재구성한다
-  (조건 찾기·비교·종합 문항 정답 재작성, 수집 범위 밖인 부스터스 관련 부분 수정).
+- 평가셋은 9/30 스냅샷 기준 30문항으로 재구성했다 (`eval/eval_set.csv`, 초안 34문항에서 바뀐 점은 `eval/README.md`).
+- 평가 기준일은 **2026-10-02**로 고정한다. 마감 여부는 `effective_status(..., "2026-10-02")`로 판정한다.
 - 지표 우선순위: 최신성(마감 여부) > 출처 정확도 > 답변 정확도 > 검색 정확도
 
 ## 환경
