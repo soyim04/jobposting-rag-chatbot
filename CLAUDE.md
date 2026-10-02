@@ -39,6 +39,7 @@
 
 - `docs/proposal.pdf` 제안서 · `eval/eval_set.xlsx` 평가셋
 - `src/collect_jumpit.py` 점핏 수집 스크립트
+- `src/posting_status.py` 오늘 날짜 기준 마감 여부 판정 (`effective_status`)
 - `data/README.md` 데이터 카드 · `data/postings.csv` 공고별 상태 · `data/collection_summary.csv` 수집 기록
 - `data/raw/` 공고 원문 (**비공개, 절대 커밋하지 않음**)
 
