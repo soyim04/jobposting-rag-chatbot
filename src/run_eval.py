@@ -275,6 +275,43 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning):
     }
 
 
+NO_CONTEXT_SYSTEM = f"""너는 개발자 채용 상담 챗봇이다. 오늘은 {REF_DATE}이다.
+사용자는 채용 플랫폼 점핏에 올라온 개발자 채용공고에 대해 묻는다. 아는 범위에서 간결하게 답한다.
+
+출력 필드
+- answer: 사용자에게 보여 줄 답변"""
+
+NO_CONTEXT_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}},
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+
+
+def run_no_context(item, client, model, judge_model, reasoning):
+    """GPT 빈손 테스트: 공고 문서 없이 같은 질문에 답하게 하고 같은 기준으로 채점한다.
+    공고를 고른 문항은 화면에서 보이는 정보(회사명·공고명)만 질문 앞에 붙인다."""
+    ids = scope_ids(item["검색 범위"])
+    question = item["질문"]
+    if item["검색 범위"].startswith("공고 선택:"):
+        p = POSTINGS[ids[0]]
+        question = f"(선택한 공고: {p['company']} · {p['title']})\n{question}"
+    elif item["검색 범위"].startswith("필터:"):
+        question = f"({item['검색 범위']})\n{question}"
+    ans, a_in, a_out = chat_json(client, model, NO_CONTEXT_SYSTEM, question, NO_CONTEXT_SCHEMA, "answer", reasoning)
+    graded, (j_in, j_out) = grade(item, ans["answer"], [], client, judge_model)
+    return {
+        "id": item["id"], "분류": item["분류"], "질문": question,
+        "검색 결과": "", "검색 적중": "", "근거 재현율": "",
+        "답변": ans["answer"], "표시 근거": "", "인용": "", "인용 검증": "0/0",
+        **graded, "근거 표시 판정": "",
+        "사람 판정": "", "메모": "", "개요 청크 수": 0,
+        "_tokens": {model: (a_in, a_out), judge_model: (j_in, j_out)},
+        "_quotes": (0, 0),
+    }
+
+
 def summarize(rows):
     def rate(vals):
         return f"{sum(vals) / len(vals):.1%}" if vals else ""
@@ -294,7 +331,7 @@ def summarize(rows):
         "근거 재현율": rate(recall_vals),
         "근거 표시 정확도": rate([VERDICT_SCORE[r["근거 표시 판정"]] for r in shown]),
         "문서에 없음 처리": rate([r["문서에 없음 처리"] == "정답" for r in none_rows]),
-        "개요 청크 비율": rate([r["개요 청크 수"] / len(r["검색 결과"].split("; ")) for r in rows]),
+        "개요 청크 비율": rate([r["개요 청크 수"] / len(r["검색 결과"].split("; ")) for r in rows if r["검색 결과"]]),
         "사람 일치율": rate([r["사람 판정"] == (r["답변 판정"] or r["문서에 없음 처리"])
                           for r in rows if r["사람 판정"]]),
     }
@@ -362,6 +399,7 @@ def main():
     ap.add_argument("--reasoning", default=None, help="reasoning_effort (기본: 모델 기본값)")
     ap.add_argument("--ids", nargs="*", help="일부 문항만 실행 (시험용)")
     ap.add_argument("--regrade", nargs="*", help="eval/results/raw/의 채점표 파일명. 답변은 그대로 두고 다시 채점")
+    ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
 
@@ -377,7 +415,22 @@ def main():
                 usage[m][0] += i
                 usage[m][1] += o
 
-    if args.regrade:
+    if args.no_context:
+        items = load_csv(EVAL_SET)
+        if args.ids:
+            items = [it for it in items if it["id"] in set(args.ids)]
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            rows = list(pool.map(lambda it: run_no_context(it, client, args.model, args.judge_model, args.reasoning),
+                                 items))
+        add_usage(rows)
+        setting = (f"문서 없음(GPT 빈손), 답변 {args.model}(reasoning {args.reasoning or '기본'}), "
+                   f"채점 {args.judge_model}, 채점 기준 {GRADING_VERSION}")
+        tag = "" if not args.ids else "_partial"
+        out = RESULTS_DIR / f"{date.today().isoformat()}_no-context_{args.model}{tag}.csv"
+        write_results(rows, out, setting)
+        report(rows, out, setting, record=not args.ids)
+        memo, n_items = "GPT 빈손 테스트", len(items)
+    elif args.regrade:
         for name in args.regrade:
             rows, out, setting = regrade(name, client, args.judge_model, args.workers)
             add_usage(rows)
