@@ -1,1 +1,4 @@
 requests>=2.32
+openai>=3.23
+chromadb>=1.5.9
+python-dotenv>=1.2
