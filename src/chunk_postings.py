@@ -154,9 +154,10 @@ def build_chunks_for_posting(row, strategy):
         "company": row["company"],
         "title": row["title"],
         "job_categories": job_categories,
-        "career_min": row["career_min"],
-        "career_max": row["career_max"],
-        "newcomer": row["newcomer"],
+        # docs/step3_metadata.md: 범위 필터를 위해 정수·참/거짓으로 저장
+        "career_min": int(row["career_min"]),
+        "career_max": int(row["career_max"]),
+        "newcomer": row["newcomer"] == "Y",
         "closed_at": row["closed_at"],
         "status": row["status"],
         "collected_at": collected_at,
