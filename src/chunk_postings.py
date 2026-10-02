@@ -1,26 +1,34 @@
 """점핏 채용공고 청킹 스크립트 (3단계: 파싱·정제·청킹).
 
-data/postings.csv의 사용 문서(included=Y)를 읽어 docs/step3_cleaning_rules.md의 규칙대로 정제하고
+사용 문서(included=Y)를 읽어 docs/step3_cleaning_rules.md의 규칙대로 정제하고
 두 가지 전략으로 청킹해서 저장한다.
 - 전략 A: 항목(6개) 단위 그대로, 항목당 청크 1개
 - 전략 B: A와 동일하되 800자 이상인 항목만 번호 소그룹/문단 경계로 하위 분할
 
+데이터셋 (data/README.md > 평가용·서비스용 데이터 분리)
+- eval (기본값): data/eval_snapshot_2026-09-30/postings.csv -> data/chunks/eval/
+- service: data/postings.csv (최신 재수집본) -> data/chunks/service/
+
 결과
-- data/chunks/strategy_a.jsonl
-- data/chunks/strategy_b.jsonl
+- data/chunks/{데이터셋}/strategy_a.jsonl
+- data/chunks/{데이터셋}/strategy_b.jsonl
 
 사용법
-    .venv\\Scripts\\python.exe src\\chunk_postings.py
+    .venv\\Scripts\\python.exe src\\chunk_postings.py [eval|service]
 """
 
 import csv
 import json
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-POSTINGS_CSV = ROOT / "data" / "postings.csv"
-CHUNKS_DIR = ROOT / "data" / "chunks"
+# 평가는 9/30 스냅샷으로 고정, 서비스는 최신 postings.csv (data/README.md > 평가용·서비스용 데이터 분리)
+DATASETS = {
+    "eval": (ROOT / "data" / "eval_snapshot_2026-09-30" / "postings.csv", ROOT / "data" / "chunks" / "eval"),
+    "service": (ROOT / "data" / "postings.csv", ROOT / "data" / "chunks" / "service"),
+}
 
 FIELDS = ["serviceInfo", "responsibility", "qualifications",
           "preferredRequirements", "welfares", "recruitProcess"]
@@ -129,8 +137,8 @@ def split_long_section(text):
     return result
 
 
-def load_used_postings():
-    with POSTINGS_CSV.open(encoding="utf-8-sig", newline="") as f:
+def load_used_postings(postings_csv):
+    with postings_csv.open(encoding="utf-8-sig", newline="") as f:
         return [r for r in csv.DictReader(f) if r["included"] == "Y"]
 
 
@@ -189,12 +197,16 @@ def build_chunks_for_posting(row, strategy):
 
 
 def main():
-    postings = load_used_postings()
-    print(f"사용 문서 {len(postings)}건 청킹 시작")
+    dataset = sys.argv[1] if len(sys.argv) > 1 else "eval"
+    if dataset not in DATASETS:
+        sys.exit(f"데이터셋은 {'/'.join(DATASETS)} 중 하나여야 합니다: {dataset}")
+    postings_csv, chunks_dir = DATASETS[dataset]
+    postings = load_used_postings(postings_csv)
+    print(f"[{dataset}] {postings_csv.relative_to(ROOT).as_posix()} 사용 문서 {len(postings)}건 청킹 시작")
 
-    CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+    chunks_dir.mkdir(parents=True, exist_ok=True)
     for strategy, filename in (("A", "strategy_a.jsonl"), ("B", "strategy_b.jsonl")):
-        out_path = CHUNKS_DIR / filename
+        out_path = chunks_dir / filename
         total_chunks = 0
         with out_path.open("w", encoding="utf-8") as f:
             for row in postings:

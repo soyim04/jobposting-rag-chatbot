@@ -1,7 +1,7 @@
 # 청크 통계표 (3단계: 파싱·정제·청킹)
 
-`src/chunk_postings.py` 실행 결과(`data/chunks/strategy_a.jsonl`, `strategy_b.jsonl`)를 집계한 표입니다.
-정제 규칙은 `docs/step3_cleaning_rules.md`를 따르며, 대상은 사용 문서 101건입니다.
+`src/chunk_postings.py` 실행 결과(`data/chunks/eval/strategy_a.jsonl`, `strategy_b.jsonl`)를 집계한 표입니다.
+정제 규칙은 `docs/step3_cleaning_rules.md`를 따르며, 대상은 평가용 9/30 스냅샷(`data/eval_snapshot_2026-09-30/postings.csv`)의 사용 문서 101건입니다.
 
 ## 항목(분할 전) 기준 — 전략 A·B 공통
 

@@ -40,8 +40,10 @@
 - `docs/proposal.pdf` 제안서 · `eval/eval_set.xlsx` 평가셋
 - `src/collect_jumpit.py` 점핏 수집 스크립트
 - `src/posting_status.py` 오늘 날짜 기준 마감 여부 판정 (`effective_status`)
-- `data/README.md` 데이터 카드 · `data/postings.csv` 공고별 상태 · `data/collection_summary.csv` 수집 기록
-- `data/raw/` 공고 원문 (**비공개, 절대 커밋하지 않음**)
+- `src/chunk_postings.py` 청킹 (`eval` 기본값: 9/30 스냅샷 → `data/chunks/eval/`, `service`: 최신 → `data/chunks/service/`)
+- `data/README.md` 데이터 카드 · `data/postings.csv` 공고별 최신 상태(서비스용) · `data/collection_summary.csv` 수집 기록
+- `data/eval_snapshot_2026-09-30/postings.csv` 평가용 고정 스냅샷 (**수정 금지**)
+- `data/raw/` 공고 원문 (**비공개, 절대 커밋하지 않음**) · `data/chunks/` 청크 (비공개)
 
 ## 데이터 규칙
 
@@ -54,6 +56,7 @@
 ## 평가 관련 결정
 
 - 평가 기준 데이터는 **2026-09-30 수집본으로 고정**한다. 재수집해도 평가 정답이 흔들리지 않게 한다.
+  평가에는 `data/eval_snapshot_2026-09-30/postings.csv`와 `data/chunks/eval/`만 쓰고, `data/postings.csv`는 서비스용이다.
 - 지금 평가셋(34문항)은 공고 12건 기준 초안이다. 4단계에서 수집 데이터 기준으로 재구성한다
   (조건 찾기·비교·종합 문항 정답 재작성, 수집 범위 밖인 부스터스 관련 부분 수정).
 - 지표 우선순위: 최신성(마감 여부) > 출처 정확도 > 답변 정확도 > 검색 정확도
