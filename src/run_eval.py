@@ -39,6 +39,7 @@ RESULTS_DIR = ROOT / "eval" / "results"
 RAW_RESULTS_DIR = RESULTS_DIR / "raw"  # 공고 원문 인용이 들어 있어 커밋하지 않는다
 PRIVATE_COLUMNS = ("인용",)
 SUMMARY_CSV = RESULTS_DIR / "summary.csv"
+SYNONYMS_JSON = ROOT / "data" / "tech_synonyms.json"
 CHROMA_DIR = ROOT / "chroma_db"
 
 REF_DATE = "2026-10-02"  # eval/README.md > 평가 기준일
@@ -164,6 +165,41 @@ def build_context(hits):
             f"[근거 {i}] 공고ID {meta['posting_id']} | {meta['company']} · {meta['title']} | 항목: {meta['section']}\n"
             f"마감일 {meta['closed_at']} · 상태: {status} (기준일 {REF_DATE})\n{body}")
     return "\n\n".join(blocks)
+
+
+def load_synonym_groups():
+    """data/tech_synonyms.json → [[대표어, 표기...], ...]. '_'로 시작하는 키(설명·관련 기술)는 쓰지 않는다."""
+    data = json.loads(SYNONYMS_JSON.read_text(encoding="utf-8"))
+    return [[k, *v] for k, v in data.items() if not k.startswith("_")]
+
+
+KOR_PARTICLES = ("을", "를", "이", "가", "은", "는", "의", "로", "에", "도", "만", "과", "와", "랑", "으로", "에서",
+                 "경험", "관련", "개발", "써", "쓰")
+
+
+def term_in_text(term, text):
+    """영문 표기는 단어 경계로만 일치(Java가 JavaScript에 걸리지 않게), 3자 이하 영문은 대소문자도 구분.
+    한글 표기는 2자 이상이고, 바로 뒤가 한글이 아니거나 조사·어미일 때만 일치로 본다
+    ('뷰'가 '인터뷰'에, '인공지능'이 회사명 '인공지능팩토리'에 걸리지 않게)."""
+    if re.search(r"[가-힣]", term):
+        if len(term) < 2:
+            return False
+        for m in re.finditer(re.escape(term), text):
+            rest = text[m.end():]
+            if not rest or not re.match(r"[가-힣]", rest) or rest.startswith(KOR_PARTICLES):
+                return True
+        return False
+    flags = 0 if len(term) <= 3 else re.IGNORECASE
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text, flags) is not None
+
+
+def expand_query(question, groups):
+    """2단계: 질문에 기술 표기가 있으면 같은 기술의 다른 표기를 덧붙여 검색용 질문을 만든다. (확장 질문, 덧붙인 표기)"""
+    extra = []
+    for terms in groups:
+        if any(term_in_text(t, question) for t in terms):
+            extra += [t for t in terms if t not in extra and t.lower() not in question.lower()]
+    return (f"{question} ({', '.join(extra)})" if extra else question), extra
 
 
 def chat_json(client, model, system, user, schema, name, reasoning):
@@ -415,6 +451,7 @@ def main():
     ap.add_argument("--ids", nargs="*", help="일부 문항만 실행 (시험용)")
     ap.add_argument("--regrade", nargs="*", help="eval/results/raw/의 채점표 파일명. 답변은 그대로 두고 다시 채점")
     ap.add_argument("--full-posting", action="store_true", help="1단계: '공고 선택' 문항은 검색 대신 그 공고 전체를 근거로 투입")
+    ap.add_argument("--synonyms", action="store_true", help="2단계: 질문의 기술 표기에 동의어를 덧붙여 검색 (data/tech_synonyms.json)")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
@@ -458,7 +495,9 @@ def main():
         items = load_csv(EVAL_SET)
         if args.ids:
             items = [it for it in items if it["id"] in set(args.ids)]
-        emb = client.embeddings.create(model=EMBED_MODEL, input=[it["질문"] for it in items])
+        groups = load_synonym_groups() if args.synonyms else []
+        expanded = [expand_query(it["질문"], groups) if args.synonyms else (it["질문"], []) for it in items]
+        emb = client.embeddings.create(model=EMBED_MODEL, input=[q for q, _ in expanded])
         qvecs = [d.embedding for d in sorted(emb.data, key=lambda d: d.index)]
         usage[EMBED_MODEL] = [emb.usage.total_tokens, 0]
 
@@ -470,12 +509,16 @@ def main():
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
                                          args.model, args.judge_model, args.reasoning, args.full_posting),
                     zip(items, qvecs)))
+            for r, (_, extra) in zip(rows, expanded):
+                if extra and not r["메모"].startswith("공고 전체"):
+                    r["메모"] = (r["메모"] + "; " if r["메모"] else "") + f"검색 질문에 덧붙임: {', '.join(extra)}"
             add_usage(rows)
             setting = (f"전략 {strategy}, top-{args.top_k}, 임베딩 {EMBED_MODEL}, 답변 {args.model}"
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
                        f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}"
-                       + (", 공고 선택 시 공고 전체 투입" if args.full_posting else ""))
-            tag = ("_full" if args.full_posting else "") + ("" if not args.ids else "_partial")
+                       + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
+                       + (", 기술 동의어 확장" if args.synonyms else ""))
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
