@@ -35,3 +35,7 @@
 2026-10-06T11:49:03,run_eval,text-embedding-3-small,710,0,0.00001,"전략 B, top-5, 30문항"
 2026-10-06T11:49:03,run_eval,gpt-6-luna,76885,17785,0.01658,"전략 B, top-5, 30문항"
 2026-10-06T11:59:28,run_eval,gpt-6-luna,87067,27756,0.02258,"재채점 2026-10-02_B_k5_gpt-6-luna.csv, 2026-10-06_B_k5_gpt-6-luna_full_g3.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_g3.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_g3.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_g3.csv, 150문항"
+2026-10-06T14:16:43,run_eval,text-embedding-3-small,710,0,0.00001,"전략 B, top-5, 30문항"
+2026-10-06T14:16:43,run_eval,gpt-6-luna,82081,21680,0.01905,"전략 B, top-5, 30문항"
+2026-10-06T14:18:00,run_eval,text-embedding-3-small,710,0,0.00001,"전략 B, top-5, 30문항"
+2026-10-06T14:18:00,run_eval,gpt-6-luna,81793,19463,0.01791,"전략 B, top-5, 30문항"

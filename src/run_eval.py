@@ -317,6 +317,41 @@ DIFF_RULES = """
 10. [분류-본문 차이]가 있으면, 해당 공고에 대해 점핏 분류와 본문 내용이 다르다고 분명히 밝히고 어느 쪽을 근거로 말하는지 적는다. 점핏 분류(예: 신입)만 보고 지원에 문제없다고 단정하지 않는다.
 11. [분류-본문 차이]의 '참고 공고'는 조건에 해당한다고 단정하지 않는다. 점핏 기술스택 태그에만 있고 본문 근거는 없다고만 말한다."""
 
+# 답변 지시문 v2 (--prompt v2). v1은 위 상수를 그대로 둔다.
+# 바뀐 것: 규칙 2에 일반 지식 추론 예시, 규칙 6을 항목 누락 방지로 교체, 규칙 7(지원 가능 여부는 결론부터) 추가,
+# 조건 필터 규칙의 필수·우대 구분을 기술 조건 질문에만 적용. 규칙 번호는 이어서 다시 매겼다.
+ANSWER_SYSTEM_V2 = f"""너는 점핏 개발자 채용공고를 근거로 답하는 상담 챗봇이다. 오늘은 {REF_DATE}이다.
+
+규칙
+1. 아래 [근거]에 있는 내용만으로 답한다. 근거에 없는 내용은 "확인되지 않습니다"라고 답하고, 추측하거나 외부 지식으로 채우지 않는다.
+2. 질문을 잇기 위해 일반 지식(예: 프레임워크가 어떤 언어 기반인지)을 써야 하면, 그 부분이 공고 내용이 아니라 추론이라고 밝힌다. 예: "React는 JavaScript 라이브러리이므로 …(공고 내용이 아닌 일반 지식 추론)".
+3. 공고를 언급할 때마다 회사명과 공고명을 쓰고, 마감일과 상태는 [근거]에 적힌 값을 그대로 옮긴다.
+4. 마감된 공고는 지원할 수 없다고 분명히 말한다.
+5. 서로 다른 공고의 내용을 섞지 않는다. 같은 회사라도 공고ID가 다르면 다른 공고다.
+6. 질문에 대한 답만 한다. 다만 주요업무·자격요건·우대사항·전형·연봉·복지처럼 항목을 묻는 질문은 [근거]에 나열된 항목을 요약하거나 생략하지 말고 빠짐없이 쓴다. 불필요한 배경 설명은 붙이지 않는다.
+7. 지원 가능 여부를 묻는 질문은 결론(가능 / 조건부 가능 / 불가 / 확인 불가)을 먼저 말하고, 근거의 필수 자격요건을 빠짐없이 함께 말한다.
+
+출력 필드
+- answer: 사용자에게 보여 줄 답변
+- sources: 답변의 근거로 쓴 공고ID와 항목 (근거를 쓰지 않았으면 빈 목록)
+- quotes: 답변의 근거가 된 원문 문장을 [근거]에서 글자 그대로 복사한 목록"""
+
+STRUCTURED_RULES_V2 = """
+
+추가 규칙 (조건 코드 필터)
+8. [코드 필터 결과]는 프로그램이 조건으로 거른 공고 목록이다. 이 목록에 있는 공고만 답하고, 목록에 없는 공고를 추가하지 않는다. 목록의 공고를 빼지도 않는다.
+9. 각 공고가 조건에 맞는 이유를 [근거]에서 찾아 설명한다. 기술을 조건으로 찾는 질문에서만 필수(자격요건)와 우대(우대사항)를 구분해서 말한다. 그 밖의 조건에서는 구분하지 않고, 근거 항목에 없다는 말을 덧붙이지 않는다.
+10. 목록이 비어 있으면 조건에 맞는 공고가 확인되지 않는다고 답한다."""
+
+DIFF_RULES_V2 = """
+
+추가 규칙 (분류-본문 차이)
+11. [분류-본문 차이]가 있으면, 해당 공고에 대해 점핏 분류와 본문 내용이 다르다고 분명히 밝히고 어느 쪽을 근거로 말하는지 적는다. 점핏 분류(예: 신입)만 보고 지원에 문제없다고 단정하지 않는다.
+12. [분류-본문 차이]의 '참고 공고'는 조건에 해당한다고 단정하지 않는다. 점핏 기술스택 태그에만 있고 본문 근거는 없다고만 말한다."""
+
+PROMPTS = {"v1": (ANSWER_SYSTEM, STRUCTURED_RULES, DIFF_RULES),
+           "v2": (ANSWER_SYSTEM_V2, STRUCTURED_RULES_V2, DIFF_RULES_V2)}
+
 SECTIONS_FOR = {"education_not_4year": {"overview"}, "closed_before": {"overview"},
                 "remote_or_flexible": {"welfares", "qualifications"},
                 "tech": {"qualifications", "preferredRequirements"},
@@ -438,7 +473,7 @@ def run_structured(item, ids, col, client, model, reasoning):
 
 
 def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False, structured=False,
-            diff_notes=False, diff_relevant_only=False):
+            diff_notes=False, diff_relevant_only=False, prompt="v1"):
     ids = scope_ids(item["검색 범위"])
     # 1단계: 공고를 지정한 문항은 검색 대신 그 공고 전체를 넣는다. 이때 검색 지표는 의미가 없어 비운다.
     full = full_posting and item["검색 범위"].startswith("공고 선택:")
@@ -470,13 +505,14 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         pids = list(dict.fromkeys(m["posting_id"] for m in metas))
         asked = not diff_relevant_only or bool(CAREER_ASK_RE.search(item["질문"]))
         notes = build_diff_notes(pids, load_fields(), st["conds"] if st else None, st["refs"] if st else (), career=asked)
-    blocks, system = [], ANSWER_SYSTEM
+    base_rules, structured_rules, diff_rules = PROMPTS[prompt]
+    blocks, system = [], base_rules
     if st:
         blocks.append(f"[코드 필터 결과]\n{st['text']}")
-        system += STRUCTURED_RULES
+        system += structured_rules
     if notes:
         blocks.append(notes)
-        system += DIFF_RULES
+        system += diff_rules
     user = "\n\n".join(blocks + [f"[근거]\n{context}", f"[질문]\n{item['질문']}"])
     context = "\n\n".join(blocks + [context])  # 코드가 만든 필터 결과·차이 문장도 인용할 수 있게 검증 대상에 포함
     ans, a_in, a_out = chat_json(client, model, system, user, ANSWER_SCHEMA, "answer", reasoning)
@@ -656,6 +692,8 @@ def main():
     ap.add_argument("--synonyms", action="store_true", help="2단계: 질문의 기술 표기에 동의어를 덧붙여 검색 (data/tech_synonyms.json)")
     ap.add_argument("--structured", action="store_true", help="3단계: 조건으로 찾는 문항은 공고별 칸(data/posting_fields_eval.csv)을 코드로 걸러 LLM은 설명만")
     ap.add_argument("--diff-notes", action="store_true", help="4단계: 점핏 분류와 본문이 다른 공고는 그 차이를 근거에 붙여 답변에 명시 (경력은 data/posting_fields_eval.csv의 career_mismatch)")
+    ap.add_argument("--prompt", choices=sorted(PROMPTS), default="v1", help="5단계: 답변 지시문 버전 (v2: 항목 누락 방지, 지원 가능 여부는 결론부터, 필수·우대 구분은 기술 조건만)")
+    ap.add_argument("--label", default="", help="같은 설정을 여러 번 실행할 때 결과 파일 이름 끝에 붙일 라벨 (예: a, b)")
     ap.add_argument("--diff-relevant-only", action="store_true", help="--diff-notes와 함께: 경력 차이는 질문이 경력·신입 여부를 물을 때만 붙임")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
@@ -713,7 +751,7 @@ def main():
                 rows = list(pool.map(
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
                                          args.model, args.judge_model, args.reasoning, args.full_posting, args.structured,
-                                         args.diff_notes, args.diff_relevant_only),
+                                         args.diff_notes, args.diff_relevant_only, args.prompt),
                     zip(items, qvecs)))
             for r, (_, extra) in zip(rows, expanded):
                 if extra and not r["메모"].startswith(("공고 전체", "코드 필터", "분류-본문")):
@@ -721,13 +759,14 @@ def main():
             add_usage(rows)
             setting = (f"전략 {strategy}, top-{args.top_k}, 임베딩 {EMBED_MODEL}, 답변 {args.model}"
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
-                       f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}"
+                       f"프롬프트 {args.prompt}, 채점 기준 {GRADING_VERSION}"
+                       + (f", 실행 라벨 {args.label}" if args.label else "")
                        + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
                        + (", 기술 동의어 확장" if args.synonyms else "")
                        + (", 조건 코드 필터" if args.structured else "")
                        + ((", 분류-본문 차이 표시(경력 차이는 질문이 경력·신입을 물을 때만)" if args.diff_relevant_only
                            else ", 분류-본문 차이 표시") if args.diff_notes else ""))
-            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + ("" if not args.ids else "_partial")
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + ("_p2" if args.prompt == "v2" else "") + (f"_{args.label}" if args.label else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
