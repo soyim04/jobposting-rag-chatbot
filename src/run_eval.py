@@ -52,7 +52,8 @@ SECTION_KOR = {"overview": "공고 개요", "serviceInfo": "회사소개", "resp
 VERDICT_SCORE = {"정답": 1.0, "부분": 0.5, "오답": 0.0}
 FRESHNESS_IDS = {"A19", "A20", "T04"}
 PROMPT_VERSION = "v1"
-GRADING_VERSION = "v2"  # v1: 근거 표시를 공고ID만 비교 / v2: 공고ID+항목 비교 (eval/README.md > 채점 기준 변경 기록)
+GRADING_VERSION = "v2.1"  # v1: 근거 표시를 공고ID만 비교 / v2: 공고ID+항목 비교 / v2.1: A14 채점 메모에 경력 공고 정의 추가(채점 LLM 오판 수정). v3(A04·A05 기준 완화)는 채택하지 않고 민감도 분석으로만 남김 (eval/README.md > 채점 기준 변경 기록)
+GRADE_TAG = "" if GRADING_VERSION == "v2" else f"_g{GRADING_VERSION[1:]}"  # v2 이후 실행 결과 파일이 이전 기준 파일을 덮어쓰지 않게 이름에 붙인다
 KOR_TO_SECTION = {v: k for k, v in SECTION_KOR.items()}
 
 ANSWER_SYSTEM = f"""너는 점핏 개발자 채용공고를 근거로 답하는 상담 챗봇이다. 오늘은 {REF_DATE}이다.
@@ -684,7 +685,7 @@ def main():
         setting = (f"문서 없음(GPT 빈손), 답변 {args.model}(reasoning {args.reasoning or '기본'}), "
                    f"채점 {args.judge_model}, 채점 기준 {GRADING_VERSION}")
         tag = "" if not args.ids else "_partial"
-        out = RESULTS_DIR / f"{date.today().isoformat()}_no-context_{args.model}{tag}.csv"
+        out = RESULTS_DIR / f"{date.today().isoformat()}_no-context_{args.model}{tag}{GRADE_TAG}.csv"
         write_results(rows, out, setting)
         report(rows, out, setting, record=not args.ids)
         memo, n_items = "GPT 빈손 테스트", len(items)
@@ -728,7 +729,7 @@ def main():
                        + ((", 분류-본문 차이 표시(경력 차이는 질문이 경력·신입을 물을 때만)" if args.diff_relevant_only
                            else ", 분류-본문 차이 표시") if args.diff_notes else ""))
             tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + ("" if not args.ids else "_partial")
-            out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
+            out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}{GRADE_TAG}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
         memo = f"전략 {'/'.join(args.strategy)}, top-{args.top_k}"
