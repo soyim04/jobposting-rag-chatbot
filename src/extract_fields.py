@@ -13,9 +13,11 @@
 - eval/usage_log.csv                     : 사용 토큰과 비용
 
 사용법
-    .venv\\Scripts\\python.exe src\\extract_fields.py
+    .venv\\Scripts\\python.exe src\\extract_fields.py            # 3단계 칸 전체
+    .venv\\Scripts\\python.exe src\\extract_fields.py --career   # 4단계: 본문 경력 수준 칸 추가 (기존 칸은 유지)
 """
 
+import argparse
 import csv
 import json
 import re
@@ -55,6 +57,71 @@ REMOTE_SCHEMA = {
     "required": ["remote_work", "flexible_hours", "evidence"],
     "additionalProperties": False,
 }
+
+
+CAREER_EVIDENCE = ROOT / "data" / "raw" / "posting_career_evidence.csv"
+CAREER_SYSTEM = """너는 채용공고 본문이 지원자에게 기대하거나 요구하는 최소 경력 연차를 뽑는 추출기다.
+- "3~7년차 수준 예상", "경력 3년 이상"처럼 최소 연차가 보이면 그 최소값(정수)을 expected_min_years로 한다.
+- "경력 5년 이하", "신입 가능", "경력 무관"처럼 상한이거나 연차를 요구하지 않는 표현은 최소 연차로 보지 않는다.
+- 업무 설명 속 기간(프로젝트 3개월 등), 회사 연혁, 서비스 운영 기간은 해당하지 않는다.
+- 연차를 기대하거나 요구하는 문장이 없으면 expected_min_years는 -1이다. 추측하지 않는다.
+- evidence: 판단 근거 문장을 본문에서 글자 그대로 복사한 목록 (-1이면 빈 목록)"""
+CAREER_SCHEMA = {
+    "type": "object",
+    "properties": {"expected_min_years": {"type": "integer"}, "evidence": {"type": "array", "items": {"type": "string"}}},
+    "required": ["expected_min_years", "evidence"],
+    "additionalProperties": False,
+}
+
+
+def career_one(pid, sec, client):
+    body = "\n\n".join(f"[{SECTION_KOR[k]}]\n{sec[k]}" for k in ("responsibility", "qualifications", "preferredRequirements")
+                       if k in sec)
+    out, t_in, t_out = chat_json(client, MODEL, CAREER_SYSTEM, body, CAREER_SCHEMA, "career", None)
+    norm_body = normalize(body)
+    evidence = [e for e in out["evidence"] if e.strip()]
+    return pid, out["expected_min_years"], evidence, sum(normalize(e) in norm_body for e in evidence), t_in, t_out
+
+
+def main_career():
+    """4단계: 본문이 기대하는 최소 경력(body_career_min)과 점핏 경력 분류와의 불일치(career_mismatch)를 기존 칸 파일에 추가한다.
+    재택·기술 등 기존 칸은 다시 뽑지 않는다. 불일치 판정은 코드가 한다: 본문 기대 최소 연차 > 점핏 경력 최소 연차."""
+    load_dotenv(ROOT / ".env")
+    client = OpenAI()
+    sections = load_sections()
+    postings = {r["posting_id"]: r for r in load_csv(SNAPSHOT) if r["included"] == "Y"}
+    old = load_csv(OUT)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = {r[0]: r for r in pool.map(lambda r: career_one(r["posting_id"], sections[r["posting_id"]], client), old)}
+
+    rows, evid = [], []
+    for r in old:
+        pid = r["posting_id"]
+        _, years, evidence, matched, _, _ = results[pid]
+        body_min = years if years >= 0 else ""
+        mismatch = "Y" if body_min != "" and body_min > int(postings[pid]["career_min"]) else "N"
+        rows.append({**{k: v for k, v in r.items() if k not in ("body_career_min", "career_mismatch")},
+                     "body_career_min": body_min, "career_mismatch": mismatch})
+        evid.append({"posting_id": pid, "company": r["company"], "점핏 경력 최소": postings[pid]["career_min"],
+                     "본문 기대 최소": body_min, "근거 문장": " | ".join(evidence), "원문 일치": f"{matched}/{len(evidence)}"})
+    for path, data in ((OUT, rows), (CAREER_EVIDENCE, evid)):
+        with path.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(data[0]))
+            w.writeheader()
+            w.writerows(data)
+
+    t_in = sum(r[4] for r in results.values())
+    t_out = sum(r[5] for r in results.values())
+    price_in, price_out = PRICES[MODEL]
+    cost = t_in / 1e6 * price_in + t_out / 1e6 * price_out
+    log_usage({"시각": datetime.now().isoformat(timespec="seconds"), "작업": "extract_fields", "모델": MODEL,
+               "입력 토큰": t_in, "출력 토큰": t_out, "비용(달러)": f"{cost:.5f}", "메모": f"본문 경력 수준 추출, {len(rows)}건"})
+    flagged = [r for r in rows if r["career_mismatch"] == "Y"]
+    print(f"{len(rows)}건 → {OUT.relative_to(ROOT).as_posix()}, 비용 약 ${cost:.4f}")
+    print(f"  본문에 최소 연차 명시: {sum(r['body_career_min'] != '' for r in rows)}건, 점핏 분류와 불일치(career_mismatch=Y): {len(flagged)}건")
+    print(f"  불일치 중 점핏 신입: {sum(postings[r['posting_id']]['newcomer'] == 'Y' for r in flagged)}건")
+    bad = [e["posting_id"] for e in evid if e["원문 일치"].split("/")[0] != e["원문 일치"].split("/")[1]]
+    print(f"  근거 문장이 원문과 일치하지 않는 공고: {bad or '없음'}")
 
 
 def load_sections():
@@ -144,4 +211,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--career", action="store_true", help="4단계: 본문 경력 수준 칸만 추가 (기존 칸은 유지)")
+    if ap.parse_args().career:
+        main_career()
+    else:
+        main()

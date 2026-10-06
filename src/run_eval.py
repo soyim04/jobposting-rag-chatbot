@@ -311,6 +311,12 @@ STRUCTURED_RULES = """
 8. 각 공고가 조건에 맞는 이유를 [근거]에서 찾아 설명한다. 필수(자격요건)와 우대(우대사항)는 구분해서 말한다.
 9. 목록이 비어 있으면 조건에 맞는 공고가 확인되지 않는다고 답한다."""
 
+DIFF_RULES = """
+
+추가 규칙 (분류-본문 차이)
+10. [분류-본문 차이]가 있으면, 해당 공고에 대해 점핏 분류와 본문 내용이 다르다고 분명히 밝히고 어느 쪽을 근거로 말하는지 적는다. 점핏 분류(예: 신입)만 보고 지원에 문제없다고 단정하지 않는다.
+11. [분류-본문 차이]의 '참고 공고'는 조건에 해당한다고 단정하지 않는다. 점핏 기술스택 태그에만 있고 본문 근거는 없다고만 말한다."""
+
 SECTIONS_FOR = {"education_not_4year": {"overview"}, "closed_before": {"overview"},
                 "remote_or_flexible": {"welfares", "qualifications"},
                 "tech": {"qualifications", "preferredRequirements"},
@@ -363,6 +369,41 @@ def apply_conditions(ids, conds, fields):
     return out
 
 
+def tag_only_refs(ids, conds, matched, fields, groups):
+    """기술 조건에서 코드 필터(본문 기준)에는 안 걸렸지만 점핏 기술스택 태그에는 조건 기술이 모두 있는 공고."""
+    if "tech" not in conds:
+        return []
+    refs = []
+    for pid in ids:
+        p = POSTINGS[pid]
+        if pid in matched or effective_status(p["closed_at"], p["status"], REF_DATE) != "진행 중":
+            continue
+        tags = {canonical_tech(t.strip(), groups).lower() for t in p["tech_stacks"].replace(";", ",").split(",") if t.strip()}
+        if all(t.lower() in tags for t in conds["tech"]):
+            refs.append(pid)
+    return refs
+
+
+CAREER_ASK_RE = re.compile(r"신입|경력|연차|년차|지원해도|지원할 수|지원 가능|자격")
+
+
+def build_diff_notes(pids, fields, conds=None, refs=(), career=True):
+    """4단계: 점핏 분류와 본문이 다른 점을 답변 근거 앞에 붙일 문장으로 만든다. 없으면 빈 문자열.
+    career=False면 경력 차이는 쓰지 않는다 (질문이 경력·신입 여부와 관련 없을 때)."""
+    lines = []
+    for pid in pids:
+        f, p = fields[pid], POSTINGS[pid]
+        if career and f.get("career_mismatch") == "Y":
+            label = "신입" if p["newcomer"] == "Y" else f"경력 {p['career_min']}년 이상"
+            lines.append(f"- 공고ID {pid} | {p['company']} · {p['title']}: 점핏 경력 분류는 {label}이지만 "
+                         f"본문은 경력 {f['body_career_min']}년 이상 수준을 기대한다")
+    if refs:
+        techs = ", ".join(conds["tech"])
+        lines.append(f"- 참고 공고({techs}): 점핏 기술스택 태그에는 있으나 본문 자격요건·우대사항에는 없어 코드 필터 결과에서 제외됨: "
+                     + "; ".join(f"공고ID {pid} {POSTINGS[pid]['company']}" for pid in refs))
+    return "[분류-본문 차이]\n" + "\n".join(lines) if lines else ""
+
+
 def filter_summary(conds, matched, fields):
     label = ", ".join(COND_LABEL[k].format(", ".join(v) if k == "tech" else v) for k, v in conds.items())
     lines = [f"조건: {label} (기준일 {REF_DATE} 진행 중인 공고만, 검색 범위 안에서) → 해당 공고 {len(matched)}건"]
@@ -377,11 +418,13 @@ def filter_summary(conds, matched, fields):
 def run_structured(item, ids, col, client, model, reasoning):
     """3단계: 질문을 조건으로 해석(LLM)하고 공고별 칸을 코드로 걸러낸다. 조건이 없으면 None(검색으로 처리)."""
     parsed, p_in, p_out = chat_json(client, model, PARSE_SYSTEM, item["질문"], PARSE_SCHEMA, "conditions", reasoning)
-    conds = active_conditions(parsed, load_synonym_groups())
+    groups = load_synonym_groups()
+    conds = active_conditions(parsed, groups)
     if not conds:
         return None, (p_in, p_out)
     fields = load_fields()
     matched = apply_conditions(ids, conds, fields)
+    refs = tag_only_refs(ids, conds, matched, fields, groups)
     keep = {"overview"}.union(*(SECTIONS_FOR[k] for k in conds))
     docs, metas = [], []
     for pid in matched:
@@ -390,11 +433,12 @@ def run_structured(item, ids, col, client, model, reasoning):
             if meta["section_key"] in keep:
                 docs.append(doc)
                 metas.append(meta)
-    return {"conds": conds, "matched": matched, "docs": docs, "metas": metas,
+    return {"conds": conds, "matched": matched, "refs": refs, "docs": docs, "metas": metas,
             "text": filter_summary(conds, matched, fields)}, (p_in, p_out)
 
 
-def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False, structured=False):
+def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False, structured=False,
+            diff_notes=False, diff_relevant_only=False):
     ids = scope_ids(item["검색 범위"])
     # 1단계: 공고를 지정한 문항은 검색 대신 그 공고 전체를 넣는다. 이때 검색 지표는 의미가 없어 비운다.
     full = full_posting and item["검색 범위"].startswith("공고 선택:")
@@ -420,13 +464,21 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         recall = f"{len(found)}/{len(gold)}" if gold else ""
 
     context = build_context(list(zip(docs, metas)))
+    # 4단계: 점핏 분류와 본문이 다른 공고가 근거에 있으면 그 차이를 근거 앞에 붙인다 (없으면 프롬프트는 그대로)
+    notes = ""
+    if diff_notes:
+        pids = list(dict.fromkeys(m["posting_id"] for m in metas))
+        asked = not diff_relevant_only or bool(CAREER_ASK_RE.search(item["질문"]))
+        notes = build_diff_notes(pids, load_fields(), st["conds"] if st else None, st["refs"] if st else (), career=asked)
+    blocks, system = [], ANSWER_SYSTEM
     if st:
-        user = f"[코드 필터 결과]\n{st['text']}\n\n[근거]\n{context}\n\n[질문]\n{item['질문']}"
-        context = st["text"] + "\n\n" + context  # 코드 필터 결과 문장도 인용할 수 있게 검증 대상에 포함
-        system = ANSWER_SYSTEM + STRUCTURED_RULES
-    else:
-        user = f"[근거]\n{context}\n\n[질문]\n{item['질문']}"
-        system = ANSWER_SYSTEM
+        blocks.append(f"[코드 필터 결과]\n{st['text']}")
+        system += STRUCTURED_RULES
+    if notes:
+        blocks.append(notes)
+        system += DIFF_RULES
+    user = "\n\n".join(blocks + [f"[근거]\n{context}", f"[질문]\n{item['질문']}"])
+    context = "\n\n".join(blocks + [context])  # 코드가 만든 필터 결과·차이 문장도 인용할 수 있게 검증 대상에 포함
     ans, a_in, a_out = chat_json(client, model, system, user, ANSWER_SCHEMA, "answer", reasoning)
 
     # 출처 정확도: 인용 문장이 LLM에 넘긴 근거(청크 본문 + 마감일·상태 줄)에 글자 그대로 있는지
@@ -447,6 +499,8 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         memo = f"코드 필터 {json.dumps(st['conds'], ensure_ascii=False)} → {len(st['matched'])}건"
     elif full:
         memo = f"공고 전체 투입 {len(docs)}청크"
+    if notes:
+        memo += ("; " if memo else "") + f"분류-본문 차이 표시 {notes.count(chr(10))}건"
     tokens = [(model, a_in, a_out), (judge_model, j_in, j_out)] + ([(model, *parse_tokens)] if parse_tokens else [])
     return {
         "id": item["id"],
@@ -601,6 +655,8 @@ def main():
     ap.add_argument("--full-posting", action="store_true", help="1단계: '공고 선택' 문항은 검색 대신 그 공고 전체를 근거로 투입")
     ap.add_argument("--synonyms", action="store_true", help="2단계: 질문의 기술 표기에 동의어를 덧붙여 검색 (data/tech_synonyms.json)")
     ap.add_argument("--structured", action="store_true", help="3단계: 조건으로 찾는 문항은 공고별 칸(data/posting_fields_eval.csv)을 코드로 걸러 LLM은 설명만")
+    ap.add_argument("--diff-notes", action="store_true", help="4단계: 점핏 분류와 본문이 다른 공고는 그 차이를 근거에 붙여 답변에 명시 (경력은 data/posting_fields_eval.csv의 career_mismatch)")
+    ap.add_argument("--diff-relevant-only", action="store_true", help="--diff-notes와 함께: 경력 차이는 질문이 경력·신입 여부를 물을 때만 붙임")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
@@ -656,10 +712,11 @@ def main():
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 rows = list(pool.map(
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
-                                         args.model, args.judge_model, args.reasoning, args.full_posting, args.structured),
+                                         args.model, args.judge_model, args.reasoning, args.full_posting, args.structured,
+                                         args.diff_notes, args.diff_relevant_only),
                     zip(items, qvecs)))
             for r, (_, extra) in zip(rows, expanded):
-                if extra and not r["메모"].startswith(("공고 전체", "코드 필터")):
+                if extra and not r["메모"].startswith(("공고 전체", "코드 필터", "분류-본문")):
                     r["메모"] = (r["메모"] + "; " if r["메모"] else "") + f"검색 질문에 덧붙임: {', '.join(extra)}"
             add_usage(rows)
             setting = (f"전략 {strategy}, top-{args.top_k}, 임베딩 {EMBED_MODEL}, 답변 {args.model}"
@@ -667,8 +724,10 @@ def main():
                        f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}"
                        + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
                        + (", 기술 동의어 확장" if args.synonyms else "")
-                       + (", 조건 코드 필터" if args.structured else ""))
-            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + ("" if not args.ids else "_partial")
+                       + (", 조건 코드 필터" if args.structured else "")
+                       + ((", 분류-본문 차이 표시(경력 차이는 질문이 경력·신입을 물을 때만)" if args.diff_relevant_only
+                           else ", 분류-본문 차이 표시") if args.diff_notes else ""))
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
