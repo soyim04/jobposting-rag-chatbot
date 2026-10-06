@@ -277,11 +277,135 @@ def fetch_full_posting(col, posting_id):
     return [d for d, _ in pairs], [m for _, m in pairs]
 
 
-def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False):
+FIELDS_CSV = ROOT / "data" / "posting_fields_eval.csv"
+FOUR_YEAR = {"대학교졸업(4년) 이상", "석사졸업 이상"}
+
+PARSE_SYSTEM = f"""너는 채용공고 검색 질문에서 공고를 거를 조건만 뽑는 해석기다. 오늘은 {REF_DATE}이다.
+- 해당 없는 조건은 false, 빈 문자열, 빈 목록으로 둔다. 신입·직무(백엔드·프론트엔드) 범위는 따로 처리하니 뽑지 않는다.
+- education_not_4year: 4년제 대학 졸업이 필요 없는 곳을 찾는 질문
+- closed_before: "N월 N일 전에 마감"이면 그 날짜(YYYY-MM-DD). 그 날짜는 포함하지 않는다
+- remote_or_flexible: 재택·원격·하이브리드·유연근무·자율/시차 출퇴근이 되는 곳을 찾는 질문
+- tech: 질문에 나온 기술 이름을 질문에 쓴 그대로 (예: 스프링, Node.js). 테스트 코드는 기술이 아니라 test_code로 둔다
+- test_code: 테스트 코드 작성 경험을 우대·요구하는 곳을 찾는 질문
+- coding_test: 코딩테스트나 과제 전형이 있는 곳을 찾는 질문
+- 공통 요구사항 요약, 비교, 연봉, 특정 회사 질문처럼 조건으로 공고를 거르는 질문이 아니면 모두 비워 둔다."""
+
+PARSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "education_not_4year": {"type": "boolean"},
+        "closed_before": {"type": "string"},
+        "remote_or_flexible": {"type": "boolean"},
+        "tech": {"type": "array", "items": {"type": "string"}},
+        "test_code": {"type": "boolean"},
+        "coding_test": {"type": "boolean"},
+    },
+    "required": ["education_not_4year", "closed_before", "remote_or_flexible", "tech", "test_code", "coding_test"],
+    "additionalProperties": False,
+}
+
+STRUCTURED_RULES = """
+
+추가 규칙 (조건 코드 필터)
+7. [코드 필터 결과]는 프로그램이 조건으로 거른 공고 목록이다. 이 목록에 있는 공고만 답하고, 목록에 없는 공고를 추가하지 않는다. 목록의 공고를 빼지도 않는다.
+8. 각 공고가 조건에 맞는 이유를 [근거]에서 찾아 설명한다. 필수(자격요건)와 우대(우대사항)는 구분해서 말한다.
+9. 목록이 비어 있으면 조건에 맞는 공고가 확인되지 않는다고 답한다."""
+
+SECTIONS_FOR = {"education_not_4year": {"overview"}, "closed_before": {"overview"},
+                "remote_or_flexible": {"welfares", "qualifications"},
+                "tech": {"qualifications", "preferredRequirements"},
+                "test_code": {"qualifications", "preferredRequirements"}, "coding_test": {"recruitProcess"}}
+COND_LABEL = {"education_not_4year": "4년제 졸업 불필요", "closed_before": "마감일이 {} 이전",
+              "remote_or_flexible": "재택·유연근무 가능", "tech": "기술 {}", "test_code": "테스트 코드 언급",
+              "coding_test": "코딩테스트·과제 전형"}
+
+
+def load_fields():
+    return {r["posting_id"]: r for r in load_csv(FIELDS_CSV)}
+
+
+def canonical_tech(name, groups):
+    for g in groups:
+        if any(name.lower() == t.lower() for t in g):
+            return g[0]
+    return name
+
+
+def active_conditions(parsed, groups):
+    conds = {}
+    for k, v in parsed.items():
+        if k == "tech":
+            if v:
+                conds[k] = [canonical_tech(t, groups) for t in v]
+        elif v:
+            conds[k] = v
+    return conds
+
+
+def apply_conditions(ids, conds, fields):
+    """검색 범위 안에서 기준일에 진행 중인 공고만 남기고, 조건을 모두 만족하는 공고ID를 돌려준다."""
+    out = []
+    for pid in ids:
+        p, f = POSTINGS[pid], fields[pid]
+        if effective_status(p["closed_at"], p["status"], REF_DATE) != "진행 중":
+            continue
+        techs = {t.lower() for t in (f["tech_required"] + ";" + f["tech_preferred"]).split(";") if t}
+        ok = all([
+            not conds.get("education_not_4year") or p["education"] not in FOUR_YEAR,
+            not conds.get("closed_before") or (p["closed_at"] != "상시" and p["closed_at"] < conds["closed_before"]),
+            not conds.get("remote_or_flexible") or "Y" in (f["remote_work"], f["flexible_hours"]),
+            all(t.lower() in techs for t in conds.get("tech", [])),
+            not conds.get("test_code") or bool(f["test_code"]),
+            not conds.get("coding_test") or f["coding_test"] == "Y",
+        ])
+        if ok:
+            out.append(pid)
+    return out
+
+
+def filter_summary(conds, matched, fields):
+    label = ", ".join(COND_LABEL[k].format(", ".join(v) if k == "tech" else v) for k, v in conds.items())
+    lines = [f"조건: {label} (기준일 {REF_DATE} 진행 중인 공고만, 검색 범위 안에서) → 해당 공고 {len(matched)}건"]
+    for pid in matched:
+        p, f = POSTINGS[pid], fields[pid]
+        lines.append(f"- 공고ID {pid} | {p['company']} · {p['title']} | 마감일 {p['closed_at']} | 학력 {p['education']} | "
+                     f"재택 {f['remote_work']}·유연근무 {f['flexible_hours']} | 필수 기술 {f['tech_required'] or '-'} | "
+                     f"우대 기술 {f['tech_preferred'] or '-'} | 테스트 코드 {f['test_code'] or '-'} | 코딩테스트 {f['coding_test']}")
+    return "\n".join(lines)
+
+
+def run_structured(item, ids, col, client, model, reasoning):
+    """3단계: 질문을 조건으로 해석(LLM)하고 공고별 칸을 코드로 걸러낸다. 조건이 없으면 None(검색으로 처리)."""
+    parsed, p_in, p_out = chat_json(client, model, PARSE_SYSTEM, item["질문"], PARSE_SCHEMA, "conditions", reasoning)
+    conds = active_conditions(parsed, load_synonym_groups())
+    if not conds:
+        return None, (p_in, p_out)
+    fields = load_fields()
+    matched = apply_conditions(ids, conds, fields)
+    keep = {"overview"}.union(*(SECTIONS_FOR[k] for k in conds))
+    docs, metas = [], []
+    for pid in matched:
+        d, m = fetch_full_posting(col, pid)
+        for doc, meta in zip(d, m):
+            if meta["section_key"] in keep:
+                docs.append(doc)
+                metas.append(meta)
+    return {"conds": conds, "matched": matched, "docs": docs, "metas": metas,
+            "text": filter_summary(conds, matched, fields)}, (p_in, p_out)
+
+
+def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False, structured=False):
     ids = scope_ids(item["검색 범위"])
     # 1단계: 공고를 지정한 문항은 검색 대신 그 공고 전체를 넣는다. 이때 검색 지표는 의미가 없어 비운다.
     full = full_posting and item["검색 범위"].startswith("공고 선택:")
-    if full:
+    # 3단계: 조건으로 찾는 문항은 검색 대신 코드로 걸러 낸 공고만 넣는다. 조건이 없으면 기존 검색으로 처리한다.
+    st, parse_tokens = None, None
+    if structured and item["검색 범위"].startswith("필터:"):
+        st, parse_tokens = run_structured(item, ids, col, client, model, reasoning)
+    if st:
+        docs, metas = st["docs"], st["metas"]
+        retrieved, hit, recall, gold = [], "", "", []
+    elif full:
         docs, metas = fetch_full_posting(col, ids[0])
         retrieved, hit, recall, gold = [], "", "", []
     else:
@@ -296,9 +420,14 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         recall = f"{len(found)}/{len(gold)}" if gold else ""
 
     context = build_context(list(zip(docs, metas)))
-    ans, a_in, a_out = chat_json(client, model, ANSWER_SYSTEM,
-                                 f"[근거]\n{context}\n\n[질문]\n{item['질문']}",
-                                 ANSWER_SCHEMA, "answer", reasoning)
+    if st:
+        user = f"[코드 필터 결과]\n{st['text']}\n\n[근거]\n{context}\n\n[질문]\n{item['질문']}"
+        context = st["text"] + "\n\n" + context  # 코드 필터 결과 문장도 인용할 수 있게 검증 대상에 포함
+        system = ANSWER_SYSTEM + STRUCTURED_RULES
+    else:
+        user = f"[근거]\n{context}\n\n[질문]\n{item['질문']}"
+        system = ANSWER_SYSTEM
+    ans, a_in, a_out = chat_json(client, model, system, user, ANSWER_SCHEMA, "answer", reasoning)
 
     # 출처 정확도: 인용 문장이 LLM에 넘긴 근거(청크 본문 + 마감일·상태 줄)에 글자 그대로 있는지
     context_norm = normalize(context)
@@ -306,11 +435,24 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
     verified = sum(normalize(q) in context_norm for q in quotes)
 
     graded, (j_in, j_out) = grade(item, ans["answer"], ans["sources"], client, judge_model)
+
+    # 필터 정밀도·재현율: 코드가 거른 공고 vs 정답 근거에 나온 공고 (조건 필터를 쓴 문항만)
+    f_ids, f_prec, f_rec, memo = "", "", "", ""
+    if st:
+        gold_pids = {pid for pid, _ in gold_units(item["근거"])}
+        both = set(st["matched"]) & gold_pids
+        f_ids = "; ".join(st["matched"])
+        f_prec = f"{len(both)}/{len(st['matched'])}"
+        f_rec = f"{len(both)}/{len(gold_pids)}" if gold_pids else ""
+        memo = f"코드 필터 {json.dumps(st['conds'], ensure_ascii=False)} → {len(st['matched'])}건"
+    elif full:
+        memo = f"공고 전체 투입 {len(docs)}청크"
+    tokens = [(model, a_in, a_out), (judge_model, j_in, j_out)] + ([(model, *parse_tokens)] if parse_tokens else [])
     return {
         "id": item["id"],
         "분류": item["분류"],
         "질문": item["질문"],
-        "검색 결과": "; ".join(f"{p}/{s}" for p, s in retrieved) if not full else "",
+        "검색 결과": "; ".join(f"{p}/{s}" for p, s in retrieved) if not (full or st) else "",
         "검색 적중": hit,
         "근거 재현율": recall,
         "답변": ans["answer"],
@@ -319,9 +461,10 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         "인용 검증": f"{verified}/{len(quotes)}" if quotes else "0/0",
         **graded,
         "사람 판정": "",
-        "메모": f"공고 전체 투입 {len(docs)}청크" if full else "",
+        "메모": memo,
+        "필터 결과": f_ids, "필터 정밀도": f_prec, "필터 재현율": f_rec,
         "개요 청크 수": sum(1 for _, s in retrieved if s == "overview"),
-        "_tokens": {model: (a_in, a_out), judge_model: (j_in, j_out)},
+        "_tokens": tokens,
         "_quotes": (verified, len(quotes)),
     }
 
@@ -357,8 +500,8 @@ def run_no_context(item, client, model, judge_model, reasoning):
         "검색 결과": "", "검색 적중": "", "근거 재현율": "",
         "답변": ans["answer"], "표시 근거": "", "인용": "", "인용 검증": "0/0",
         **graded, "근거 표시 판정": "",
-        "사람 판정": "", "메모": "", "개요 청크 수": 0,
-        "_tokens": {model: (a_in, a_out), judge_model: (j_in, j_out)},
+        "사람 판정": "", "메모": "", "필터 결과": "", "필터 정밀도": "", "필터 재현율": "", "개요 청크 수": 0,
+        "_tokens": [(model, a_in, a_out), (judge_model, j_in, j_out)],
         "_quotes": (0, 0),
     }
 
@@ -373,6 +516,9 @@ def summarize(rows):
     fresh = [r for r in rows if r["id"] in FRESHNESS_IDS]
     q_ok = sum(r["_quotes"][0] for r in rows)
     q_all = sum(r["_quotes"][1] for r in rows)
+    filt = [r for r in rows if r.get("필터 정밀도")]
+    prec_vals = [int(a) / int(b) for a, b in (r["필터 정밀도"].split("/") for r in filt) if int(b)]
+    frec_vals = [int(a) / int(b) for a, b in (r["필터 재현율"].split("/") for r in filt if r["필터 재현율"]) if int(b)]
     recall_vals = [int(a) / int(b) for a, b in (r["근거 재현율"].split("/") for r in retr)]
     return {
         "최신성": rate([VERDICT_SCORE[r["답변 판정"]] for r in fresh]),
@@ -380,6 +526,8 @@ def summarize(rows):
         "답변 정확도": rate([VERDICT_SCORE[r["답변 판정"]] for r in answerable]),
         "검색 적중률": rate([r["검색 적중"] == "O" for r in retr]),
         "근거 재현율": rate(recall_vals),
+        "필터 정밀도": rate(prec_vals),
+        "필터 재현율": rate(frec_vals),
         "근거 표시 정확도": rate([VERDICT_SCORE[r["근거 표시 판정"]] for r in shown]),
         "문서에 없음 처리": rate([r["문서에 없음 처리"] == "정답" for r in none_rows]),
         "개요 청크 비율": rate([r["개요 청크 수"] / len(r["검색 결과"].split("; ")) for r in rows if r["검색 결과"]]),
@@ -397,7 +545,7 @@ def write_results(rows, out, setting):
             w = csv.DictWriter(f, fieldnames=["설정"] + keep)
             w.writeheader()
             for r in rows:
-                w.writerow({"설정": setting, **{k: r[k] for k in keep}})
+                w.writerow({"설정": setting, **{k: r.get(k, "") for k in keep}})
 
 
 def append_summary(row):
@@ -432,7 +580,7 @@ def regrade(raw_name, client, judge_model, workers):
         graded, tokens = grade(items[r["id"]], r["답변"], sources, client, judge_model)
         ok, total = (int(v) for v in r["인용 검증"].split("/"))
         return {**{k: v for k, v in r.items() if k != "설정"}, **graded,
-                "개요 청크 수": int(r["개요 청크 수"]), "_tokens": {judge_model: tokens}, "_quotes": (ok, total)}
+                "개요 청크 수": int(r["개요 청크 수"]), "_tokens": [(judge_model, *tokens)], "_quotes": (ok, total)}
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         rows = list(pool.map(one, old_rows))
@@ -452,6 +600,7 @@ def main():
     ap.add_argument("--regrade", nargs="*", help="eval/results/raw/의 채점표 파일명. 답변은 그대로 두고 다시 채점")
     ap.add_argument("--full-posting", action="store_true", help="1단계: '공고 선택' 문항은 검색 대신 그 공고 전체를 근거로 투입")
     ap.add_argument("--synonyms", action="store_true", help="2단계: 질문의 기술 표기에 동의어를 덧붙여 검색 (data/tech_synonyms.json)")
+    ap.add_argument("--structured", action="store_true", help="3단계: 조건으로 찾는 문항은 공고별 칸(data/posting_fields_eval.csv)을 코드로 걸러 LLM은 설명만")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
@@ -463,7 +612,7 @@ def main():
 
     def add_usage(rows):
         for r in rows:
-            for m, (i, o) in r["_tokens"].items():
+            for m, i, o in r["_tokens"]:  # 답변·채점 모델이 같아도 합산되도록 목록으로 받는다
                 usage.setdefault(m, [0, 0])
                 usage[m][0] += i
                 usage[m][1] += o
@@ -507,18 +656,19 @@ def main():
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 rows = list(pool.map(
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
-                                         args.model, args.judge_model, args.reasoning, args.full_posting),
+                                         args.model, args.judge_model, args.reasoning, args.full_posting, args.structured),
                     zip(items, qvecs)))
             for r, (_, extra) in zip(rows, expanded):
-                if extra and not r["메모"].startswith("공고 전체"):
+                if extra and not r["메모"].startswith(("공고 전체", "코드 필터")):
                     r["메모"] = (r["메모"] + "; " if r["메모"] else "") + f"검색 질문에 덧붙임: {', '.join(extra)}"
             add_usage(rows)
             setting = (f"전략 {strategy}, top-{args.top_k}, 임베딩 {EMBED_MODEL}, 답변 {args.model}"
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
                        f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}"
                        + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
-                       + (", 기술 동의어 확장" if args.synonyms else ""))
-            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("" if not args.ids else "_partial")
+                       + (", 기술 동의어 확장" if args.synonyms else "")
+                       + (", 조건 코드 필터" if args.structured else ""))
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)

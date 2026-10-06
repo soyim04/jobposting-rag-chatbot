@@ -1,0 +1,102 @@
+﻿posting_id,company,tech_required,tech_preferred,test_code,coding_test,remote_work,flexible_hours
+54895343,인공지능팩토리,Java;Python;JavaScript;TypeScript;Spring;MySQL;PostgreSQL;Oracle;SQL;RDBMS;AWS,Java;AWS;Kubernetes;Jenkins;AI,,N,N,N
+54897052,베스텔라랩,SQL;NoSQL;Git;Linux;REST API,React;Vue.js;AWS;Azure,,N,N,N
+54901444,콴텍,,,,N,N,N
+54901904,송암시스콤,Java;Spring;Node.js;React;jQuery;MariaDB;Oracle;RDBMS,TypeScript;Vue.js;Docker;Kubernetes;REST API,,N,N,N
+54901969,옵토전자,,,,N,N,Y
+54901976,옵토전자,,,,N,N,Y
+54901988,옵토전자,Python,Python,,N,N,Y
+54907748,코보시스,MyBatis;MariaDB;Linux,AWS;Docker,,N,N,N
+54908146,스콥정보통신,Go;C++;Linux,Python;Kubernetes,,Y,Y,Y
+54908188,제네시스네스트,Java;Spring;Linux,,,N,N,Y
+54910781,26도라인,JavaScript;PHP;Node.js;MySQL,AI,,N,N,N
+54910799,26도라인,JavaScript;PHP;Node.js;MySQL,Node.js;AI,,N,N,N
+54910860,26도라인,,,,N,N,N
+54912411,씨메스,Python;JavaScript;C++;React;FastAPI;HTML,Python;Next.js;Django;SQL;NoSQL;AWS;GCP;Azure;Git;REST API;GraphQL,preferred,Y,N,N
+54912438,씨메스,Python;TypeScript;React;Next.js;HTML;CSS,Git,preferred,Y,N,N
+54912864,에너닷,Java;Python;C++;C#;Node.js;React;Vue.js;Git,Redis,,N,N,Y
+54924502,뷰리드 강남오피스,PHP;RDBMS;REST API;AI,PHP;AWS,,N,Y,Y
+54927385,이비즈테크,,,,N,N,N
+54934040,네비웍스,,AI,,Y,Y,N
+54940150,누가의료기,Java;Kotlin;Swift,AWS;iOS,,N,N,N
+54940768,아이벡스,Python;C++;C#;Git,,,N,Y,Y
+54944733,인텍에프에이,,,,N,N,Y
+54946408,셀틱스테크놀로지,JavaScript;TypeScript;C#;React,React,,N,N,N
+54962097,비스텔리젼스,Python;Node.js;React;Next.js;Django;FastAPI;SQL;RDBMS;NoSQL;Docker;REST API,Kafka;SQL;Kubernetes;AI,,N,Y,Y
+54962380,골든플래닛,,,,N,N,Y
+54963144,일루니,FastAPI;Git;AI,Redis;Linux;AI,,N,N,N
+54964030,하마랩,JavaScript;TypeScript;Vue.js;Flutter;Git;REST API;iOS,Java;Kotlin;Vue.js;Flutter;iOS;Swift,preferred,N,N,N
+54964042,하마랩,Java;Spring;Hibernate;JPA;MySQL;MariaDB;SQL;RDBMS;Git;Linux;REST API,Spring;Redis;Kafka;RabbitMQ;AWS;GCP;Azure;Docker;Kubernetes,,N,N,N
+54973704,지엔에이컴퍼니,Python;MySQL;MongoDB;RDBMS;AWS;Azure,Python;FastAPI;REST API,,Y,Y,Y
+54984631,이노버스,Java;Spring;Hibernate;JPA;MySQL;PostgreSQL;SQL;RDBMS;AWS,MySQL;RDBMS,,N,Y,Y
+54984641,이네이블러,Java;C#;Git;AI,Java;C#;Spring;Vue.js;JPA;MariaDB;Docker,,N,Y,Y
+54985214,씨메스,JavaScript;C++,Git,,N,N,N
+54987420,보미오라한의원,Java;Python;JavaScript;PHP;Node.js;HTML;CSS,React;Vue.js;Flutter;AWS;Azure,,N,N,Y
+54987961,보스반도체,,,,Y,N,Y
+54990868,룰루랩,Python;Jenkins;GitHub;REST API;AI;iOS,AWS;REST API;AI,,N,N,N
+54991303,비스텔리젼스,Vue.js;SQL;REST API,TypeScript;Jenkins;Git,,N,Y,Y
+54996575,뮤팟,TypeScript;Node.js;React;MySQL;PostgreSQL;SQL;RDBMS,Docker;Linux;AI,,N,Y,Y
+55000741,오투플러스,PHP;RDBMS;REST API,NoSQL;AWS;GCP;Docker,preferred,N,N,N
+55000748,오투플러스,React;Vue.js;Git,,preferred,N,N,N
+55011246,베스텔라랩,React;Vue.js;Git;REST API,,,N,N,N
+55013728,와탭랩스,React;Git,,,Y,N,Y
+55013819,와탭랩스,Spring;JPA;RDBMS;NoSQL;Kubernetes;AI,Kubernetes,,Y,N,Y
+55028993,아티언스,Java;Python;JavaScript;Node.js;Git;GitHub;REST API;AI,AWS;GCP;Azure;Docker;AI,,N,N,N
+55029882,엣지크로스,Java;Spring;MyBatis;JPA;RDBMS;AWS;Docker;REST API,Kafka,,N,N,N
+55036602,오픈소스컨설팅,Java;Python;TypeScript;Node.js;React;REST API,AI,,N,N,Y
+55037758,휴먼에스,JavaScript;HTML;CSS,,,N,N,N
+55037773,휴먼에스,JavaScript;HTML;CSS,,,N,N,N
+55037795,휴먼에스,JavaScript;HTML;CSS,,,N,N,N
+55037806,휴먼에스,JavaScript;HTML;CSS,,,N,N,N
+55038011,파이오링크,Python;Linux,,,N,N,N
+55038030,파이오링크,Python,Python;Django;REST API,,N,N,N
+55041249,파이오링크,Python;Linux,Python,,N,N,N
+55042619,캐치잇플레이,TypeScript;SQL;RDBMS;AWS;REST API,Kafka;RabbitMQ;AI,,N,Y,N
+55042843,서울거래,JavaScript;jQuery;REST API;HTML;CSS,Python;Django;AWS,,N,N,N
+55042859,서울거래,Flutter;Git;REST API,iOS,,N,N,N
+55042969,파이오링크,Python;Go;Linux,AWS;GCP;Azure;Kubernetes;Git;REST API;AI,,N,N,N
+55044546,비에이치에스티,C++,,,N,N,N
+55050012,피닉슨컨트롤스,,,,N,N,N
+55052781,딥오토,,AI,,N,Y,Y
+55055492,코즈코리아,AI,,,N,Y,Y
+55060963,쿤텍,C++,,,N,N,N
+55060972,쿤텍,C++,,,N,N,N
+55066388,웨이센,React;Vue.js,React;Next.js;Vue.js;TailwindCSS,preferred,N,N,Y
+55066585,뮤즈라이브,Spring;AWS;Git,,,N,N,N
+55066661,한국이에스지데이터,Java;JavaScript;TypeScript;SQL;RDBMS;Git,Python;Spring;React;PostgreSQL;SQL;Docker;AI,,Y,Y,Y
+55075750,티엔에이치,JavaScript;TypeScript;Node.js;SQL;RDBMS;Git,PostgreSQL;Docker;Kubernetes,preferred,N,N,N
+55075779,티엔에이치,JavaScript;TypeScript;Node.js;SQL;RDBMS;Git,Docker;Kubernetes,preferred,N,N,N
+55076688,비에이치에스티,C++,,,N,N,N
+55077484,텐빌리언,PHP,,,N,N,Y
+55077540,텐빌리언,JavaScript;HTML;CSS,,,N,N,Y
+55088797,인젠트,Java;Linux,,,N,N,Y
+55090630,드림어스컴퍼니,Java;Kotlin;Go;Spring;RDBMS;NoSQL;REST API,Java;Kotlin;Go;Kafka;RabbitMQ;AWS,,Y,Y,Y
+55090653,드림어스컴퍼니,Java;Kotlin;Spring;SQL,Kafka;NoSQL;AWS,,Y,Y,Y
+55090664,드림어스컴퍼니,Java;Kotlin;Go;SQL;RDBMS;REST API,Spring;AWS,,Y,Y,Y
+55091912,인텍에프에이,Git,,,N,N,Y
+55092119,스포카,AI,Python;TypeScript;Linux,,Y,N,Y
+55092150,플라잎,Python;C++,AI,,N,N,Y
+55092344,올거나이즈코리아,Python;Spring;Node.js;Django;FastAPI;RDBMS;NoSQL;AI,Kubernetes;AI,,Y,N,Y
+55097723,에스피코리아,,,,N,N,Y
+55097733,에스피코리아,,,,N,N,Y
+55102356,메타넷글로벌,Java;Spring;Vue.js;SQL;GitHub;REST API,AI,,N,N,Y
+55102548,코어시큐리티,Python;REST API;AI,Docker;Kubernetes;AI,,N,N,Y
+55104899,아인잡,TypeScript;React;Next.js;Git;REST API;HTML;CSS,React;Next.js;AI,preferred,Y,N,N
+55104904,아인잡,Java;Spring;RDBMS;AWS;Git;REST API,Docker,,Y,N,N
+55111043,하마랩,Python,AI,,N,N,N
+55113858,지피에이코리아,,,,N,N,N
+55113981,지피에이코리아,AWS;GCP,AI,,N,N,N
+55114209,아이디에스앤트러스트,Python;Node.js;REST API,GitHub;AI,,N,N,N
+55115125,데이터드리븐,SQL;Git,TypeScript;React;Django;PostgreSQL;Redis;Docker;Kubernetes;REST API;AI,required,Y,N,Y
+55115268,스토어링크,,AI,,N,N,N
+55115564,와이톤,Java;Python;TypeScript;Spring;Django;FastAPI;PostgreSQL;SQL;RDBMS;AI,React;Next.js;Kubernetes,,N,Y,N
+55125573,에이아이콴텍,,,,N,N,N
+55136399,엘아이지시스템,Linux,,,N,N,N
+55136771,학교종이,JavaScript;TypeScript;React;Vue.js;REST API;HTML;CSS,AI,,Y,N,N
+55146536,러닝포인트,Node.js;MySQL;RDBMS,Node.js;Redis;AWS;Git,,N,Y,Y
+55148403,러닝포인트,Node.js;MySQL;RDBMS,Node.js;Redis;AWS;Git,,N,Y,Y
+55149737,인젠트,Java;Spring;MyBatis;jQuery;Oracle;SQL;RDBMS;Git,Spring;Redis;Jenkins;Linux;AI,preferred,N,N,Y
+55150792,시스콘,Java,Python;MySQL;Oracle;Linux;HTML,,N,N,N
+55150830,반프,JavaScript;TypeScript;React;Next.js;SQL;REST API,C#;AWS;GCP;Docker;AI,,N,N,N
+55159154,건강누리,JavaScript,,,N,N,N
+55159168,건강누리,JavaScript,,,N,N,N
