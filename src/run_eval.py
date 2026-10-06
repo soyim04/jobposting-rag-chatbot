@@ -232,17 +232,32 @@ def grade(item, answer, sources, client, judge_model):
     }, (j_in, j_out)
 
 
-def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning):
-    ids = scope_ids(item["검색 범위"])
-    where = {"posting_id": {"$in": ids}} if ids else None
-    res = col.query(query_embeddings=[qvec], n_results=top_k, where=where)
-    docs, metas = res["documents"][0], res["metadatas"][0]
-    retrieved = [(m["posting_id"], m["section_key"]) for m in metas]
+def fetch_full_posting(col, posting_id):
+    """공고 하나의 청크 전부를 항목 순서(개요→…→채용절차), 항목 안에서는 청크 순서대로 가져온다."""
+    res = col.get(where={"posting_id": posting_id})
+    order = list(SECTION_KOR)
+    pairs = sorted(zip(res["documents"], res["metadatas"]),
+                   key=lambda p: (order.index(p[1]["section_key"]), p[1]["chunk_index_in_section"]))
+    return [d for d, _ in pairs], [m for _, m in pairs]
 
-    gold = gold_units(item["근거"])
-    found = [g for g in gold if g in retrieved]
-    hit = ("O" if found else "X") if gold else ""
-    recall = f"{len(found)}/{len(gold)}" if gold else ""
+
+def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False):
+    ids = scope_ids(item["검색 범위"])
+    # 1단계: 공고를 지정한 문항은 검색 대신 그 공고 전체를 넣는다. 이때 검색 지표는 의미가 없어 비운다.
+    full = full_posting and item["검색 범위"].startswith("공고 선택:")
+    if full:
+        docs, metas = fetch_full_posting(col, ids[0])
+        retrieved, hit, recall, gold = [], "", "", []
+    else:
+        where = {"posting_id": {"$in": ids}} if ids else None
+        res = col.query(query_embeddings=[qvec], n_results=top_k, where=where)
+        docs, metas = res["documents"][0], res["metadatas"][0]
+        retrieved = [(m["posting_id"], m["section_key"]) for m in metas]
+
+        gold = gold_units(item["근거"])
+        found = [g for g in gold if g in retrieved]
+        hit = ("O" if found else "X") if gold else ""
+        recall = f"{len(found)}/{len(gold)}" if gold else ""
 
     context = build_context(list(zip(docs, metas)))
     ans, a_in, a_out = chat_json(client, model, ANSWER_SYSTEM,
@@ -259,7 +274,7 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning):
         "id": item["id"],
         "분류": item["분류"],
         "질문": item["질문"],
-        "검색 결과": "; ".join(f"{p}/{s}" for p, s in retrieved),
+        "검색 결과": "; ".join(f"{p}/{s}" for p, s in retrieved) if not full else "",
         "검색 적중": hit,
         "근거 재현율": recall,
         "답변": ans["answer"],
@@ -268,7 +283,7 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning):
         "인용 검증": f"{verified}/{len(quotes)}" if quotes else "0/0",
         **graded,
         "사람 판정": "",
-        "메모": "",
+        "메모": f"공고 전체 투입 {len(docs)}청크" if full else "",
         "개요 청크 수": sum(1 for _, s in retrieved if s == "overview"),
         "_tokens": {model: (a_in, a_out), judge_model: (j_in, j_out)},
         "_quotes": (verified, len(quotes)),
@@ -399,6 +414,7 @@ def main():
     ap.add_argument("--reasoning", default=None, help="reasoning_effort (기본: 모델 기본값)")
     ap.add_argument("--ids", nargs="*", help="일부 문항만 실행 (시험용)")
     ap.add_argument("--regrade", nargs="*", help="eval/results/raw/의 채점표 파일명. 답변은 그대로 두고 다시 채점")
+    ap.add_argument("--full-posting", action="store_true", help="1단계: '공고 선택' 문항은 검색 대신 그 공고 전체를 근거로 투입")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
@@ -452,13 +468,14 @@ def main():
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 rows = list(pool.map(
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
-                                         args.model, args.judge_model, args.reasoning),
+                                         args.model, args.judge_model, args.reasoning, args.full_posting),
                     zip(items, qvecs)))
             add_usage(rows)
             setting = (f"전략 {strategy}, top-{args.top_k}, 임베딩 {EMBED_MODEL}, 답변 {args.model}"
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
-                       f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}")
-            tag = "" if not args.ids else "_partial"
+                       f"프롬프트 {PROMPT_VERSION}, 채점 기준 {GRADING_VERSION}"
+                       + (", 공고 선택 시 공고 전체 투입" if args.full_posting else ""))
+            tag = ("_full" if args.full_posting else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
