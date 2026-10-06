@@ -472,13 +472,62 @@ def run_structured(item, ids, col, client, model, reasoning):
             "text": filter_summary(conds, matched, fields)}, (p_in, p_out)
 
 
+def per_posting_targets(item, ids, structured, structured_hit):
+    """6단계: 공고별 균등 검색을 쓸 문항이면 대상 공고ID 목록, 아니면 None.
+    - 조건 필터 문항인데 코드 필터로 해석되는 조건이 없으면(공통 요구처럼 요약을 묻는 질문) 검색 범위 안 공고 전부
+    - 검색 범위가 전체이고 질문에 회사명이 2곳 이상 나오며 '신입'이 있으면 그 회사들의 신입 공고
+      (같은 회사에 신입·경력 공고가 따로 있어 신입 조건 없이 회사명만으로 좁히면 경력 공고가 섞인다)"""
+    if structured and item["검색 범위"].startswith("필터:") and not structured_hit:
+        return ids
+    if item["검색 범위"] == "전체" and "신입" in item["질문"]:
+        companies = {p["company"] for p in POSTINGS.values() if p["company"] in item["질문"]}
+        if len(companies) >= 2:
+            return sorted(pid for pid, p in POSTINGS.items() if p["company"] in companies and p["newcomer"] == "Y")
+    return None
+
+
+# 질문의 낱말로 어느 항목을 묻는지 찾는 규칙 (앞에서부터 처음 맞는 항목). 6단계 공고별 검색용.
+SECTION_HINTS = [
+    ("preferredRequirements", ("우대",)),
+    ("qualifications", ("자격요건", "자격", "요구", "필요한 것", "할 줄 알아야")),
+    ("responsibility", ("주요업무", "하는 일", "무슨 일", "업무")),
+    ("welfares", ("복지", "재택", "유연근무", "혜택")),
+    ("recruitProcess", ("전형", "채용절차", "코딩테스트", "면접", "연봉")),
+]
+
+
+def target_section(question):
+    for key, words in SECTION_HINTS:
+        if any(w in question for w in words):
+            return key
+    return None
+
+
+def query_per_posting(col, qvec, pids, k, question):
+    """공고마다 근거를 가져와 공고 순서대로 붙인다.
+    질문에서 묻는 항목을 찾으면 그 항목 청크 전부와 공고 개요(회사·직무·마감일)를, 못 찾으면 질문과 가까운 청크 k개를 가져온다."""
+    section = target_section(question)
+    docs, metas = [], []
+    for pid in pids:
+        if section:
+            d, m = fetch_full_posting(col, pid)
+            pairs = [(x, y) for x, y in zip(d, m) if y["section_key"] in ("overview", section)]
+            docs += [x for x, _ in pairs]
+            metas += [y for _, y in pairs]
+        else:
+            res = col.query(query_embeddings=[qvec], n_results=k, where={"posting_id": pid})
+            docs += res["documents"][0]
+            metas += res["metadatas"][0]
+    return docs, metas
+
+
 def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_posting=False, structured=False,
-            diff_notes=False, diff_relevant_only=False, prompt="v1"):
+            diff_notes=False, diff_relevant_only=False, prompt="v1", per_posting=0):
     ids = scope_ids(item["검색 범위"])
     # 1단계: 공고를 지정한 문항은 검색 대신 그 공고 전체를 넣는다. 이때 검색 지표는 의미가 없어 비운다.
     full = full_posting and item["검색 범위"].startswith("공고 선택:")
     # 3단계: 조건으로 찾는 문항은 검색 대신 코드로 걸러 낸 공고만 넣는다. 조건이 없으면 기존 검색으로 처리한다.
-    st, parse_tokens = None, None
+    st, parse_tokens, pp_pids = None, None, None
     if structured and item["검색 범위"].startswith("필터:"):
         st, parse_tokens = run_structured(item, ids, col, client, model, reasoning)
     if st:
@@ -488,9 +537,13 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         docs, metas = fetch_full_posting(col, ids[0])
         retrieved, hit, recall, gold = [], "", "", []
     else:
-        where = {"posting_id": {"$in": ids}} if ids else None
-        res = col.query(query_embeddings=[qvec], n_results=top_k, where=where)
-        docs, metas = res["documents"][0], res["metadatas"][0]
+        pp_pids = per_posting_targets(item, ids, structured, st) if per_posting else None
+        if pp_pids:
+            docs, metas = query_per_posting(col, qvec, pp_pids, per_posting, item["질문"])
+        else:
+            where = {"posting_id": {"$in": ids}} if ids else None
+            res = col.query(query_embeddings=[qvec], n_results=top_k, where=where)
+            docs, metas = res["documents"][0], res["metadatas"][0]
         retrieved = [(m["posting_id"], m["section_key"]) for m in metas]
 
         gold = gold_units(item["근거"])
@@ -535,6 +588,8 @@ def run_one(item, col, qvec, top_k, client, model, judge_model, reasoning, full_
         memo = f"코드 필터 {json.dumps(st['conds'], ensure_ascii=False)} → {len(st['matched'])}건"
     elif full:
         memo = f"공고 전체 투입 {len(docs)}청크"
+    if pp_pids:
+        memo += ("; " if memo else "") + f"공고별 균등 검색 {len(pp_pids)}공고, 항목 {target_section(item['질문']) or '미지정(공고당 상위 ' + str(per_posting) + '개)'}"
     if notes:
         memo += ("; " if memo else "") + f"분류-본문 차이 표시 {notes.count(chr(10))}건"
     tokens = [(model, a_in, a_out), (judge_model, j_in, j_out)] + ([(model, *parse_tokens)] if parse_tokens else [])
@@ -693,6 +748,7 @@ def main():
     ap.add_argument("--structured", action="store_true", help="3단계: 조건으로 찾는 문항은 공고별 칸(data/posting_fields_eval.csv)을 코드로 걸러 LLM은 설명만")
     ap.add_argument("--diff-notes", action="store_true", help="4단계: 점핏 분류와 본문이 다른 공고는 그 차이를 근거에 붙여 답변에 명시 (경력은 data/posting_fields_eval.csv의 career_mismatch)")
     ap.add_argument("--prompt", choices=sorted(PROMPTS), default="v1", help="5단계: 답변 지시문 버전 (v2: 항목 누락 방지, 지원 가능 여부는 결론부터, 필수·우대 구분은 기술 조건만)")
+    ap.add_argument("--per-posting", type=int, default=0, help="6단계: 공고별 균등 검색. 값 = 공고당 가져올 청크 수 (0이면 끔). 조건 없는 필터 질문은 범위 안 공고 전부, 회사 2곳 이상 비교 질문은 그 회사의 신입 공고")
     ap.add_argument("--label", default="", help="같은 설정을 여러 번 실행할 때 결과 파일 이름 끝에 붙일 라벨 (예: a, b)")
     ap.add_argument("--diff-relevant-only", action="store_true", help="--diff-notes와 함께: 경력 차이는 질문이 경력·신입 여부를 물을 때만 붙임")
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
@@ -751,7 +807,7 @@ def main():
                 rows = list(pool.map(
                     lambda pair: run_one(pair[0], col, pair[1], args.top_k, client,
                                          args.model, args.judge_model, args.reasoning, args.full_posting, args.structured,
-                                         args.diff_notes, args.diff_relevant_only, args.prompt),
+                                         args.diff_notes, args.diff_relevant_only, args.prompt, args.per_posting),
                     zip(items, qvecs)))
             for r, (_, extra) in zip(rows, expanded):
                 if extra and not r["메모"].startswith(("공고 전체", "코드 필터", "분류-본문")):
@@ -761,12 +817,13 @@ def main():
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
                        f"프롬프트 {args.prompt}, 채점 기준 {GRADING_VERSION}"
                        + (f", 실행 라벨 {args.label}" if args.label else "")
+                       + (f", 공고별 균등 검색(질문의 항목 청크 + 개요, 항목을 못 찾으면 공고당 상위 {args.per_posting}개)" if args.per_posting else "")
                        + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
                        + (", 기술 동의어 확장" if args.synonyms else "")
                        + (", 조건 코드 필터" if args.structured else "")
                        + ((", 분류-본문 차이 표시(경력 차이는 질문이 경력·신입을 물을 때만)" if args.diff_relevant_only
                            else ", 분류-본문 차이 표시") if args.diff_notes else ""))
-            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + ("_p2" if args.prompt == "v2" else "") + (f"_{args.label}" if args.label else "") + ("" if not args.ids else "_partial")
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + (f"_pp{args.per_posting}" if args.per_posting else "") + ("_p2" if args.prompt == "v2" else "") + (f"_{args.label}" if args.label else "") + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
