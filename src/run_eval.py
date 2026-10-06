@@ -281,13 +281,16 @@ FIELDS_CSV = ROOT / "data" / "posting_fields_eval.csv"
 FOUR_YEAR = {"대학교졸업(4년) 이상", "석사졸업 이상"}
 
 PARSE_SYSTEM = f"""너는 채용공고 검색 질문에서 공고를 거를 조건만 뽑는 해석기다. 오늘은 {REF_DATE}이다.
-- 해당 없는 조건은 false, 빈 문자열, 빈 목록으로 둔다. 신입·직무(백엔드·프론트엔드) 범위는 따로 처리하니 뽑지 않는다.
+- 해당 없는 조건은 false, 빈 문자열, 빈 목록으로 둔다. 신입·직무 범위는 아래 newcomer_only, job으로만 뽑는다.
 - education_not_4year: 4년제 대학 졸업이 필요 없는 곳을 찾는 질문
 - closed_before: "N월 N일 전에 마감"이면 그 날짜(YYYY-MM-DD). 그 날짜는 포함하지 않는다
 - remote_or_flexible: 재택·원격·하이브리드·유연근무·자율/시차 출퇴근이 되는 곳을 찾는 질문
 - tech: 질문에 나온 기술 이름을 질문에 쓴 그대로 (예: 스프링, Node.js). 테스트 코드는 기술이 아니라 test_code로 둔다
 - test_code: 테스트 코드 작성 경험을 우대·요구하는 곳을 찾는 질문
 - coding_test: 코딩테스트나 과제 전형이 있는 곳을 찾는 질문
+- newcomer_only: 질문이 신입 공고만 찾는 경우 true
+- job: 질문이 한 직무의 공고만 찾는 경우 그 직무("백엔드" 또는 "프론트엔드"), 아니면 빈 문자열
+- location: 근무지(지역)로 찾는 질문이면 지역명 목록. 시·도는 짧게(서울, 경기, 인천, 대전, 부산, 충남 등), 구·시는 "강남구", "성남시"처럼, 동네·역 이름은 질문에 쓴 그대로(판교, 가산). 재택·원격은 근무지가 아니라 remote_or_flexible로 둔다
 - 공통 요구사항 요약, 비교, 연봉, 특정 회사 질문처럼 조건으로 공고를 거르는 질문이 아니면 모두 비워 둔다."""
 
 PARSE_SCHEMA = {
@@ -299,8 +302,12 @@ PARSE_SCHEMA = {
         "tech": {"type": "array", "items": {"type": "string"}},
         "test_code": {"type": "boolean"},
         "coding_test": {"type": "boolean"},
+        "location": {"type": "array", "items": {"type": "string"}},
+        "newcomer_only": {"type": "boolean"},
+        "job": {"type": "string"},
     },
-    "required": ["education_not_4year", "closed_before", "remote_or_flexible", "tech", "test_code", "coding_test"],
+    "required": ["education_not_4year", "closed_before", "remote_or_flexible", "tech", "test_code", "coding_test", "location",
+                 "newcomer_only", "job"],
     "additionalProperties": False,
 }
 
@@ -355,10 +362,21 @@ PROMPTS = {"v1": (ANSWER_SYSTEM, STRUCTURED_RULES, DIFF_RULES),
 SECTIONS_FOR = {"education_not_4year": {"overview"}, "closed_before": {"overview"},
                 "remote_or_flexible": {"welfares", "qualifications"},
                 "tech": {"qualifications", "preferredRequirements"},
-                "test_code": {"qualifications", "preferredRequirements"}, "coding_test": {"recruitProcess"}}
+                "test_code": {"qualifications", "preferredRequirements"}, "coding_test": {"recruitProcess"},
+                "location": {"overview"}, "newcomer_only": {"overview"}, "job": {"overview"}}
 COND_LABEL = {"education_not_4year": "4년제 졸업 불필요", "closed_before": "마감일이 {} 이전",
               "remote_or_flexible": "재택·유연근무 가능", "tech": "기술 {}", "test_code": "테스트 코드 언급",
-              "coding_test": "코딩테스트·과제 전형"}
+              "coding_test": "코딩테스트·과제 전형", "location": "근무지 {}",
+              "newcomer_only": "신입 공고", "job": "직무 {}"}
+JOB_CATEGORY = {"백엔드": "서버/백엔드 개발자", "프론트엔드": "프론트엔드 개발자"}  # 직무 이름 → 점핏 직무 분류
+# 이것만 있으면 공고를 거르는 질문이 아니다(범위만 말한 질문, 예: "티엔에이치 백엔드 신입은 …")
+REAL_CONDITIONS = {"education_not_4year", "closed_before", "remote_or_flexible", "tech", "test_code", "coding_test", "location"}
+
+# 근무지 표기 보정: 질문에서 뽑은 지역명을 공고 주소(예: "서울 강남구 …", "충남 아산시 …")의 표기로 맞춘다
+LOCATION_ALIAS = {"서울시": "서울", "서울특별시": "서울", "경기도": "경기", "인천광역시": "인천", "대전광역시": "대전",
+                  "부산광역시": "부산", "대구광역시": "대구", "광주광역시": "광주", "울산광역시": "울산",
+                  "세종특별자치시": "세종", "충청남도": "충남", "충청북도": "충북", "전라남도": "전남", "전라북도": "전북",
+                  "경상남도": "경남", "경상북도": "경북", "강원도": "강원", "제주도": "제주", "제주특별자치도": "제주"}
 
 
 def load_fields():
@@ -378,9 +396,12 @@ def active_conditions(parsed, groups):
         if k == "tech":
             if v:
                 conds[k] = [canonical_tech(t, groups) for t in v]
+        elif k == "location":
+            if v:
+                conds[k] = [LOCATION_ALIAS.get(x.strip(), x.strip()) for x in v if x.strip()]
         elif v:
             conds[k] = v
-    return conds
+    return conds if set(conds) & REAL_CONDITIONS else {}
 
 
 def apply_conditions(ids, conds, fields):
@@ -398,6 +419,9 @@ def apply_conditions(ids, conds, fields):
             all(t.lower() in techs for t in conds.get("tech", [])),
             not conds.get("test_code") or bool(f["test_code"]),
             not conds.get("coding_test") or f["coding_test"] == "Y",
+            not conds.get("location") or any(x in p["location"] for x in conds["location"]),
+            not conds.get("newcomer_only") or p["newcomer"] == "Y",
+            not conds.get("job") or JOB_CATEGORY.get(conds["job"], conds["job"]) in p["job_categories"],
         ])
         if ok:
             out.append(pid)
@@ -440,11 +464,11 @@ def build_diff_notes(pids, fields, conds=None, refs=(), career=True):
 
 
 def filter_summary(conds, matched, fields):
-    label = ", ".join(COND_LABEL[k].format(", ".join(v) if k == "tech" else v) for k, v in conds.items())
+    label = ", ".join(COND_LABEL[k].format(", ".join(v) if isinstance(v, list) else v) for k, v in conds.items())
     lines = [f"조건: {label} (기준일 {REF_DATE} 진행 중인 공고만, 검색 범위 안에서) → 해당 공고 {len(matched)}건"]
     for pid in matched:
         p, f = POSTINGS[pid], fields[pid]
-        lines.append(f"- 공고ID {pid} | {p['company']} · {p['title']} | 마감일 {p['closed_at']} | 학력 {p['education']} | "
+        lines.append(f"- 공고ID {pid} | {p['company']} · {p['title']} | 마감일 {p['closed_at']} | 근무지 {p['location']} | 학력 {p['education']} | "
                      f"재택 {f['remote_work']}·유연근무 {f['flexible_hours']} | 필수 기술 {f['tech_required'] or '-'} | "
                      f"우대 기술 {f['tech_preferred'] or '-'} | 테스트 코드 {f['test_code'] or '-'} | 코딩테스트 {f['coding_test']}")
     return "\n".join(lines)

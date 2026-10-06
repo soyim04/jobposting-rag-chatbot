@@ -222,6 +222,8 @@ __marimo__/
 chroma_db/
 data/raw/
 data/chunks/
+data/service_log.db
+data/service_log.db-journal
 eval/results/raw/
 
 # Claude Code 개인 설정

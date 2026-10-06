@@ -33,8 +33,11 @@
 5. 오답노트 — ✅ 완료 (`docs/step5_error_notes.md`: 1차 기준선 틀린 13문항 원인별 정리, 실패 유형 집계표, 개선 방향, 다음 테스트 계획)
    - 실패 유형 분류(검색 실패 / 생성 왜곡 / 문서에 없음 / 질문 모호), 실패 유형 집계표, 다음 테스트 계획
    - 1차 기준선 점수 손실: 검색 실패 8문항 71%, 생성 왜곡 5문항 29%
-6. 개선 — 청킹·top_k·프롬프트·모델·임베딩 교체와 반복 테스트, 실험 로그와 그래프
-7. 서비스화 — Streamlit 고도화, DB 로그 저장
+6. 개선 — 🔄 진행 중. 청킹·top_k·프롬프트·모델·임베딩 교체와 반복 테스트, 실험 로그와 그래프
+   - 완료: 강사님 피드백 4단계, 지시문 v2, 공고별 균등 검색, top_k 비교, 실험 로그(`docs/step6_experiment_log.md`), 그래프(`docs/figures/`). 남음: 모델 변경, 임베딩 교체, 청킹 추가 비교
+   - 답변 정확도 66% → 84~86%, 최신성 83% → 100% (전략 B, 채점 기준 v2)
+7. 서비스화 — 🔄 진행 중. Streamlit 고도화, DB 로그 저장 (`docs/step7_service.md`)
+   - 완료: 엔진(`src/rag_engine.py`), 로그 DB(`src/log_db.py`), 화면(`src/app.py`). 남음: 서비스용 데이터 재수집·색인
 8. 최종 리포트
 
 ## 폴더 구조
@@ -42,6 +45,7 @@
 - `docs/proposal.pdf` 제안서 · `eval/eval_set.csv` 평가셋 30문항 (`eval/README.md` 채점 기준) · `eval/eval_set.xlsx` 초안(이력용)
 - `src/collect_jumpit.py` 점핏 수집 스크립트
 - `src/posting_status.py` 오늘 날짜 기준 마감 여부 판정 (`effective_status`)
+- `src/rag_engine.py` 질문 1개 처리 엔진 · `src/app.py` Streamlit 화면 (`streamlit run src/app.py`) · `src/log_db.py` 질문 로그(SQLite, 비공개 `data/service_log.db`) · `src/check_engine.py` 엔진 회귀 점검
 - `src/chunk_postings.py` 청킹 (`eval` 기본값: 9/30 스냅샷 → `data/chunks/eval/`, `service`: 최신 → `data/chunks/service/`)
 - `data/README.md` 데이터 카드 · `data/postings.csv` 공고별 최신 상태(서비스용) · `data/collection_summary.csv` 수집 기록
 - `data/eval_snapshot_2026-09-30/postings.csv` 평가용 고정 스냅샷 (**수정 금지**)
