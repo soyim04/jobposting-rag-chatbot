@@ -52,7 +52,7 @@ SECTION_KOR = {"overview": "공고 개요", "serviceInfo": "회사소개", "resp
 VERDICT_SCORE = {"정답": 1.0, "부분": 0.5, "오답": 0.0}
 FRESHNESS_IDS = {"A19", "A20", "T04"}
 PROMPT_VERSION = "v1"
-GRADING_VERSION = "v2"  # v1: 근거 표시를 공고ID만 비교 / v2: 공고ID+항목 비교 (eval/README.md > 채점 기준 변경 기록)
+GRADING_VERSION = "v4"  # v1: 근거 표시를 공고ID만 비교 / v2: 공고ID+항목 비교 / v4: 정답지 수정(A03·A04·A09·A14, 질문만 보고) (eval/README.md > 채점 기준 변경 기록)
 KOR_TO_SECTION = {v: k for k, v in SECTION_KOR.items()}
 
 ANSWER_SYSTEM = f"""너는 점핏 개발자 채용공고를 근거로 답하는 상담 챗봇이다. 오늘은 {REF_DATE}이다.
@@ -744,8 +744,15 @@ def regrade(raw_name, client, judge_model, workers):
     old_rows = load_csv(RAW_RESULTS_DIR / raw_name)
 
     def one(r):
-        sources = [{"posting_id": x.split("/", 1)[0], "section": x.split("/", 1)[1]}
-                   for x in r["표시 근거"].split("; ") if x]
+        sources = []
+        for x in r["표시 근거"].split("; "):
+            if not x:
+                continue
+            if "/" in x:
+                pid, sec = x.split("/", 1)
+                sources.append({"posting_id": pid, "section": sec})
+            elif sources:  # 항목 이름에 "; "가 들어 있던 경우: 앞 출처의 항목 이름에 이어 붙인다
+                sources[-1]["section"] += "; " + x
         graded, tokens = grade(items[r["id"]], r["답변"], sources, client, judge_model)
         ok, total = (int(v) for v in r["인용 검증"].split("/"))
         return {**{k: v for k, v in r.items() if k != "설정"}, **graded,

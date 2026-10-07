@@ -60,3 +60,6 @@
 2026-10-06T16:37:34,check_engine,gpt-6-luna,0,0,0.02106,"엔진 회귀 점검, 30문항 (전체 범위에도 조건 해석). 답변·조건 해석 $0.0159 + 채점 $0.0051"
 2026-10-06T17:26:17,check_engine,gpt-6-luna,0,0,0.02101,"엔진 회귀 점검, 30문항. 답변·조건 해석 $0.0160 + 채점 $0.0050"
 2026-10-06T17:27:42,check_engine,gpt-6-luna,0,0,0.02250,"엔진 회귀 점검, 30문항 (전체 범위에도 조건 해석). 답변·조건 해석 $0.0165 + 채점 $0.0060"
+2026-10-07T17:06:31,run_eval,gpt-6-luna,17215,5758,0.00460,"재채점 2026-10-02_B_k5_gpt-6-luna.csv, 30문항"
+2026-10-07T17:24:48,run_eval,gpt-6-luna,185440,60970,0.04903,"재채점 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diff.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_p2_a.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_p2_b.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_a.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_b.csv, 2026-10-06_B_k10_gpt-6-luna_a.csv, 2026-10-06_B_k10_gpt-6-luna_b.csv, 2026-10-06_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_a.csv, 2026-10-06_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_b.csv, 300문항"
+2026-10-07T17:30:10,run_eval(추정 보정),gpt-6-luna,74176,24388,0.01961,"추정 보정: 2026-10-07 재채점 4개(기준선 A, full, full_syn, full_syn_struct, 각 30문항)의 비용. 다음 파일(diff)에서 IndexError로 멈춰 run_eval이 usage_log를 쓰지 못함. 같은 날 17:24 10개 배치의 건당 평균(입력 18544·출력 6097 토큰, $0.00490)으로 추정"
