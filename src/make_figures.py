@@ -1,8 +1,9 @@
 """6단계 그래프 생성 (SVG, 외부 패키지 없음).
 
 결과 CSV(eval/results/)에서 숫자를 읽어 docs/figures/에 그림 3개를 만든다.
-1. stage_scores.svg     : 단계별 답변 정확도와 최신성 (5·6단계는 2회 실행의 평균과 범위)
-2. item_heatmap.svg     : 오답노트 13문항의 단계별 판정
+정답지 수정 뒤(채점 기준 v4)를 기본으로 하고, stage_scores는 수정 전(v2)을 같이 그린다.
+1. stage_scores.svg     : 단계별 답변 정확도 v2 → v4와 최신성 (5·6단계·top_k=10은 2회 실행의 평균과 각 값)
+2. item_heatmap.svg     : 오답노트 13문항의 단계별 판정 (v4)
 3. top_k_retrieval.svg  : top_k별 검색 적중률 (eval/results/topk_retrieval.csv)
 
 사용법
@@ -18,8 +19,9 @@ RESULTS = ROOT / "eval" / "results"
 OUT = ROOT / "docs" / "figures"
 
 P = "2026-10-06_B_k5_gpt-6-luna_"
-# (단계 번호, 단계 이름, 결과 파일 목록(2회 실행이면 둘))
-STAGES = [
+P10 = "2026-10-06_B_k10_gpt-6-luna_"
+# (단계 번호, 단계 이름, 채점 기준 v2 결과 파일 목록(2회 실행이면 둘))
+STAGES_V2 = [
     (0, "기준선", ["2026-10-02_B_k5_gpt-6-luna_grade-v2.csv"]),
     (1, "공고 전체 투입", [P + "full.csv"]),
     (2, "기술 동의어", [P + "full_syn.csv"]),
@@ -27,10 +29,16 @@ STAGES = [
     (4, "분류-본문 차이", [P + "full_syn_struct_diffrel.csv"]),
     (5, "지시문 v2", [P + "full_syn_struct_diffrel_p2_a.csv", P + "full_syn_struct_diffrel_p2_b.csv"]),
     (6, "공고별 균등 검색", [P + "full_syn_struct_diffrel_pp2_p2_a.csv", P + "full_syn_struct_diffrel_pp2_p2_b.csv"]),
+    (7, "top_k=10 최종", [P10 + "full_syn_struct_diffrel_pp2_p2_a.csv", P10 + "full_syn_struct_diffrel_pp2_p2_b.csv"]),
 ]
+# 같은 답변을 정답지 수정(v4) 뒤 다시 채점한 파일. 기준선만 이름 규칙이 다르다.
+STAGES = [(n, name, [f.replace("_grade-v2.csv", ".csv").replace(".csv", "_grade-v4.csv") for f in files])
+          for n, name, files in STAGES_V2]
+FIXED_IDS = {"A03", "A04", "A09", "A14"}  # v4에서 정답지를 고친 문항
 SCORE = {"정답": 1.0, "부분": 0.5, "오답": 0.0}
 FRESH_IDS = {"A19", "A20", "T04"}
 SHORT = {0: "기준선", 1: "전체 투입", 2: "동의어", 3: "코드 필터", 4: "분류-본문", 5: "지시문 v2", 6: "균등 검색"}  # 히트맵 열 제목
+V2_GREY = "#9ca3af"
 FONT = "'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif"
 INK, MUTED, GRID = "#1f2937", "#6b7280", "#e5e7eb"
 BLUE, GREY = "#2563eb", "#9ca3af"
@@ -74,61 +82,75 @@ def svg(width, height, title, body, desc):
             f"<rect width='{width}' height='{height}' fill='white'/>{body}</svg>")
 
 
-def fig_stage_scores():
-    stats = []
-    for n, name, files in STAGES:
+def stage_stats(stages):
+    out = []
+    for n, name, files in stages:
         runs = [load(f) for f in files]
         acc = [accuracy(r) for r in runs]
-        hum = [accuracy(r, human=True) for r in runs]
-        stats.append({"n": n, "name": name, "acc": sum(acc) / len(acc), "lo": min(acc), "hi": max(acc),
-                      "hum": sum(hum) / len(hum), "runs": len(runs), "fresh": sum(freshness(r) for r in runs) / len(runs)})
-    W, H, x0, step, ytop, ybot, lo, hi = 900, 470, 90, 112, 110, 350, 40, 100
+        out.append({"n": n, "name": name, "accs": acc, "acc": sum(acc) / len(acc), "runs": len(runs),
+                    "fresh": sum(freshness(r) for r in runs) / len(runs)})
+    return out
+
+
+def fig_stage_scores():
+    v2, v4 = stage_stats(STAGES_V2), stage_stats(STAGES)
+    W, H, x0, step = 900, 560, 90, 100
+    fy_top, fy_bot, flo, fhi = 120, 170, 80, 100   # 최신성 칸
+    ytop, ybot, lo, hi = 235, 435, 60, 100          # 답변 정확도 칸
     X = lambda i: x0 + i * step
     Y = lambda v: ybot - (v - lo) / (hi - lo) * (ybot - ytop)
-    b = [text(40, 34, "답변 정확도는 3단계까지 66%에서 82%로 오르고, 최신성은 3단계에서 100%가 됐다", 18, INK, weight="bold")]
+    FY = lambda v: fy_bot - (v - flo) / (fhi - flo) * (fy_bot - fy_top)
+    last = v4[6]
+    b = [text(40, 34, f"정답지를 고친 뒤(v4)에도 답변 정확도는 {v4[0]['acc']:.0f}%에서 {last['acc']:.0f}%로 오르고, 최신성은 {v4[0]['fresh']:.0f}%에서 100%가 됐다", 18, INK, weight="bold")]
     # 범례
     b.append(f"<line x1='40' x2='64' y1='64' y2='64' stroke='{BLUE}' stroke-width='3'/><circle cx='52' cy='64' r='5' fill='{BLUE}'/>")
-    b.append(text(72, 69, "답변 정확도(LLM 채점)", 13, MUTED))
-    b.append(f"<circle cx='262' cy='64' r='6' fill='white' stroke='{BLUE}' stroke-width='2'/>")
-    b.append(text(274, 69, "사람 판정 반영", 13, MUTED))
-    b.append(f"<line x1='392' x2='416' y1='64' y2='64' stroke='{GREY}' stroke-width='3'/><circle cx='404' cy='64' r='4' fill='{GREY}'/>")
-    b.append(text(424, 69, "최신성", 13, MUTED))
-    b.append(f"<line x1='500' x2='500' y1='56' y2='72' stroke='{BLUE}' stroke-width='1.5'/>"
-             f"<line x1='495' x2='505' y1='56' y2='56' stroke='{BLUE}'/><line x1='495' x2='505' y1='72' y2='72' stroke='{BLUE}'/>")
-    b.append(text(512, 69, "같은 설정 2회의 범위(5·6단계)", 13, MUTED))
-    b.append(f"<line x1='{x0 - 30}' x2='{X(6) + 30}' y1='{ybot}' y2='{ybot}' stroke='#9ca3af'/>")
-    # 최신성
-    pts = " ".join(f"{X(s['n'])},{Y(s['fresh'])}" for s in stats)
+    b.append(text(72, 69, "답변 정확도 v4 (정답지 수정 후)", 13, MUTED))
+    b.append(f"<line x1='290' x2='314' y1='64' y2='64' stroke='{V2_GREY}' stroke-width='2.5' stroke-dasharray='6 4'/><circle cx='302' cy='64' r='4' fill='{V2_GREY}'/>")
+    b.append(text(322, 69, "v2 (수정 전)", 13, MUTED))
+    b.append(f"<circle cx='428' cy='64' r='4' fill='white' stroke='{BLUE}' stroke-width='2'/>")
+    b.append(text(440, 69, "같은 설정 2회의 각 실행(평균은 채운 점)", 13, MUTED))
+    # 최신성 칸
+    b.append(text(40, fy_top - 22, "최신성 (정답지 수정과 무관해 v2와 v4가 같다)", 13, INK, weight="bold"))
+    for v in (80, 100):
+        b.append(f"<line x1='60' x2='{X(7) + 30}' y1='{FY(v)}' y2='{FY(v)}' stroke='{GRID}'/>")
+        b.append(text(54, FY(v) + 4, f"{v}%", 11, MUTED, "end"))
+    pts = " ".join(f"{X(s['n'])},{FY(s['fresh'])}" for s in v4)
     b.append(f"<polyline points='{pts}' fill='none' stroke='{GREY}' stroke-width='2.5'/>")
-    for s in stats:
-        b.append(f"<circle cx='{X(s['n'])}' cy='{Y(s['fresh'])}' r='4' fill='{GREY}'><title>{s['n']} {escape(s['name'])} · 최신성 {s['fresh']:.1f}%</title></circle>")
+    for s in v4:
+        b.append(f"<circle cx='{X(s['n'])}' cy='{FY(s['fresh'])}' r='4' fill='{GREY}'><title>{s['n']} {escape(s['name'])} · 최신성 {s['fresh']:.1f}%</title></circle>")
     for n in (0, 3):
-        s = stats[n]
-        b.append(text(X(n), Y(s["fresh"]) - 12, f"{s['fresh']:.1f}%", 13, MUTED, "middle"))
-    # 답변 정확도
-    pts = " ".join(f"{X(s['n'])},{Y(s['acc'])}" for s in stats)
-    b.append(f"<polyline points='{pts}' fill='none' stroke='{BLUE}' stroke-width='3'/>")
-    for s in stats:
-        x = X(s["n"])
-        if s["runs"] > 1:
-            b.append(f"<line x1='{x}' x2='{x}' y1='{Y(s['lo'])}' y2='{Y(s['hi'])}' stroke='{BLUE}' stroke-width='1.5'/>"
-                     f"<line x1='{x - 5}' x2='{x + 5}' y1='{Y(s['lo'])}' y2='{Y(s['lo'])}' stroke='{BLUE}'/>"
-                     f"<line x1='{x - 5}' x2='{x + 5}' y1='{Y(s['hi'])}' y2='{Y(s['hi'])}' stroke='{BLUE}'/>")
-        tip = f"{s['n']} {s['name']} · 답변 정확도 {s['acc']:.1f}%" + (f" (두 번 {s['lo']:.1f}~{s['hi']:.1f}%)" if s["runs"] > 1 else "")
-        b.append(f"<circle cx='{x}' cy='{Y(s['acc'])}' r='5' fill='{BLUE}'><title>{escape(tip)}</title></circle>")
-        label_y = Y(s["lo"]) + 22 if s["runs"] > 1 else Y(s["acc"]) + 22
-        b.append(text(x, label_y, f"{s['acc']:.1f}%", 13, INK, "middle", "bold"))
-        if s["hum"] > s["acc"] + 0.01:
-            b.append(f"<circle cx='{x}' cy='{Y(s['hum'])}' r='6' fill='white' stroke='{BLUE}' stroke-width='2'><title>{s['n']} {escape(s['name'])} · 사람 판정 반영 {s['hum']:.1f}%</title></circle>")
-            b.append(text(x + 12, Y(s["hum"]) + 4, f"{s['hum']:.1f}%", 13, INK))
-    for s in stats:
-        x = X(s["n"])
-        b.append(text(x, ybot + 24, str(s["n"]), 14, INK, "middle", "bold"))
-        b.append(text(x, ybot + 42, s["name"], 12, MUTED, "middle"))
-    b.append(text(40, H - 28, "전략 B, 채점 기준 v2. 세로축은 40%부터 시작한다. 1~4단계는 1회, 5·6단계는 같은 설정 2회 실행의 평균과 범위.", 12, MUTED))
-    b.append(text(40, H - 10, "사람 판정 반영은 A14(채점 LLM의 반복 오판)를 사람이 판정한 값이다. 문항 하나가 2~4%p를 움직인다.", 12, MUTED))
-    return svg(W, H, "단계별 답변 정확도와 최신성", "".join(b),
-               "전략 B의 0~6단계 답변 정확도(LLM 채점, 사람 판정 반영)와 최신성")
+        b.append(text(X(n), FY(v4[n]["fresh"]) - 10, f"{v4[n]['fresh']:.1f}%", 12, MUTED, "middle"))
+    # 답변 정확도 칸
+    b.append(text(40, ytop - 28, "답변 정확도", 13, INK, weight="bold"))
+    for v in range(lo, hi + 1, 10):
+        b.append(f"<line x1='60' x2='{X(7) + 30}' y1='{Y(v)}' y2='{Y(v)}' stroke='{GRID if v > lo else '#9ca3af'}'/>")
+        b.append(text(54, Y(v) + 4, f"{v}%", 11, MUTED, "end"))
+    sep = (X(6) + X(7)) / 2
+    b.append(f"<line x1='{sep}' x2='{sep}' y1='{fy_top - 30}' y2='{ybot + 50}' stroke='{MUTED}' stroke-dasharray='4 4'/>")
+    b.append(text(X(7), fy_top - 22, "참고: k=10", 12, MUTED, "middle"))
+    for series, color, w, dash, r in ((v2, V2_GREY, 2.5, " stroke-dasharray='6 4'", 4), (v4, BLUE, 3, "", 5)):
+        for seg in (series[:7], series[7:]):  # top_k=10은 다른 설정이라 선을 잇지 않는다
+            if len(seg) > 1:
+                pts = " ".join(f"{X(s['n'])},{Y(s['acc'])}" for s in seg)
+                b.append(f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='{w}'{dash}/>")
+        for s in series:
+            x = X(s["n"])
+            ver = "v4" if color == BLUE else "v2"
+            if s["runs"] > 1:
+                for k, a in enumerate(s["accs"]):
+                    b.append(f"<circle cx='{x}' cy='{Y(a)}' r='{r - 1}' fill='white' stroke='{color}' stroke-width='2'><title>{s['n']} {escape(s['name'])} · {'ab'[k]} 실행 {ver} {a:.1f}%</title></circle>")
+            b.append(f"<circle cx='{x}' cy='{Y(s['acc'])}' r='{r}' fill='{color}'><title>{s['n']} {escape(s['name'])} · 답변 정확도 {ver} {s['acc']:.1f}%" + (f" (두 번 {min(s['accs']):.1f}~{max(s['accs']):.1f}%)" if s["runs"] > 1 else "") + "</title></circle>")
+    for s4, s2 in zip(v4, v2):
+        x = X(s4["n"])
+        b.append(text(x, Y(max(s4["accs"])) - 12, f"{s4['acc']:.1f}%", 13, INK, "middle", "bold"))
+        b.append(text(x, Y(min(s2["accs"])) + 22, f"{s2['acc']:.1f}%", 12, MUTED, "middle"))
+        b.append(text(x, ybot + 24, str(s4["n"]) if s4["n"] < 7 else "k10", 14, INK, "middle", "bold"))
+        b.append(text(x, ybot + 42, s4["name"], 12, MUTED, "middle"))
+    b.append(text(40, H - 40, "전략 B. 정답지 수정(v4)은 A03·A04·A09·A14를 질문만 보고 고친 것이고, 15개 원본 답변을 기준선부터 모두 다시 채점했다. 세로축은 60%부터.", 12, MUTED))
+    b.append(text(40, H - 22, "5·6단계와 k10은 같은 설정 2회 실행의 평균이다. 수정하지 않은 문항도 재채점으로 −4~+6%p 흔들려, 단계별 증감을 개선 효과로 단정하지 않는다.", 12, MUTED))
+    b.append(text(40, H - 4, "회색 점선 아래 숫자는 v2(수정 전), 파란 선 위 숫자는 v4(수정 후). k10은 top_k=10 최종 설정이라 6단계와 선을 잇지 않았다.", 12, MUTED))
+    return svg(W, H, "단계별 답변 정확도(v2 → v4)와 최신성", "".join(b),
+               "전략 B의 0~6단계와 top_k=10 최종의 답변 정확도를 정답지 수정 전(v2)과 후(v4)로 비교하고, 최신성을 따로 보여 준다")
 
 
 def fig_heatmap():
@@ -142,7 +164,7 @@ def fig_heatmap():
         ("추론을 밝히지 않음", ["A05"]),
     ]
     cols = []  # (헤더 1줄, 헤더 2줄, 파일)
-    for n, name, files in STAGES:
+    for n, name, files in STAGES[:7]:  # top_k=10 실행은 히트맵에 넣지 않는다
         for k, f in enumerate(files):
             label = str(n) if len(files) == 1 else f"{n}-{'ab'[k]}"
             cols.append((label, SHORT[n] if k == 0 else "", f))
@@ -150,8 +172,8 @@ def fig_heatmap():
     cw, rh, left, top = 62, 30, 250, 118
     n_rows = sum(len(g[1]) for g in groups)
     W, H = left + cw * len(cols) + 40, top + rh * n_rows + 90
-    b = [text(40, 34, "검색 문제로 틀리던 문항은 풀렸고, 답변 누락·추론 문항(A03·A04·A05·A09)과 A16이 남았다", 18, INK, weight="bold")]
-    b.append(text(40, 58, "O 정답 · △ 부분 · X 오답 (LLM 채점, 채점 기준 v2)", 13, MUTED))
+    b = [text(40, 34, "v4 기준으로도 검색 문제로 틀리던 문항은 풀렸고, A16과 A05가 남았다", 18, INK, weight="bold")]
+    b.append(text(40, 58, "O 정답 · △ 부분 · X 오답 (LLM 채점, 채점 기준 v4) · ※ 정답지를 고친 문항", 13, MUTED))
     for j, (label, name, _) in enumerate(cols):
         x = left + j * cw + cw / 2
         b.append(text(x, top - 30, label, 14, INK, "middle", "bold"))
@@ -164,7 +186,7 @@ def fig_heatmap():
         for ri, i in enumerate(ids):
             if ri == 0:
                 b.append(text(40, y + 20, gname, 12, MUTED))
-            b.append(text(left - 14, y + 20, i, 14, INK, "end", "bold"))
+            b.append(text(left - 14, y + 20, i + ("※" if i in FIXED_IDS else ""), 14, INK, "end", "bold"))
             for j, rows in enumerate(data):
                 v = verdict(rows[i])
                 b.append(f"<rect x='{left + j * cw + 2}' y='{y + 2}' width='{cw - 4}' height='{rh - 4}' rx='4' fill='{CELL[v]}'>"
@@ -172,7 +194,7 @@ def fig_heatmap():
                 b.append(text(left + j * cw + cw / 2, y + 21, SYM[v], 14, INK, "middle"))
             y += rh
     b.append(text(40, H - 36, "1~4단계는 1회 실행, 5·6단계는 같은 설정 2회(a, b). 1~4단계 열 아래 이름은 그 단계에서 추가한 것이다.", 12, MUTED))
-    b.append(text(40, H - 18, "5·6단계의 a·b가 다른 문항은 노이즈로 본다. A14의 X에는 채점 LLM의 반복 오판이 섞여 있다(사람 판정은 정답 또는 부분).", 12, MUTED))
+    b.append(text(40, H - 18, "5·6단계의 a·b가 다른 문항은 노이즈로 본다. ※(A03·A04·A09·A14)는 정답지를 질문만 보고 고친 뒤 처음 버전부터 다시 채점한 값이다.", 12, MUTED))
     return svg(W, H, "오답노트 13문항의 단계별 판정", "".join(b), "오답노트의 13문항이 0~6단계에서 정답·부분·오답 중 무엇이었는지")
 
 
@@ -202,7 +224,7 @@ def fig_topk():
         b.append(text(X(k), ybot + 24, f"k={k}", 13, INK, "middle"))
     b.append(text(X(5), Y(series["동의어 확장"][5]) - 12, f"{series['동의어 확장'][5]:.0f}% (동의어)", 12, MUTED, "middle"))
     b.append(text(40, H - 28, "전략 B, 정답 근거가 있는 25문항. 질문을 임베딩해 정답 근거 청크가 상위 k개에 하나라도 있으면 적중. 세로축은 50%부터.", 12, MUTED))
-    b.append(text(40, H - 10, "같은 설정으로 답변까지 평가하면(2회) 답변 정확도 66.0% → 78.0% / 68.0% (평균 73.0%). 파이프라인 전체에서는 차이가 없다.", 12, MUTED))
+    b.append(text(40, H - 10, "같은 설정으로 답변까지 평가하면(2회) 답변 정확도(v4) 72.0% → 82.0% / 76.0% (평균 79.0%). 파이프라인 전체에서는 차이가 없다.", 12, MUTED))
     return svg(W, H, "top_k별 검색 적중률", "".join(b), "top_k 3, 5, 10, 20에서 질문 그대로와 동의어 확장의 검색 적중률")
 
 
