@@ -1,6 +1,11 @@
-"""평가용 청크를 임베딩해 ChromaDB에 저장하는 색인 스크립트 (4단계).
+"""청크를 임베딩해 ChromaDB에 저장하는 색인 스크립트 (4단계, 7단계).
 
-data/chunks/eval/strategy_{a,b}.jsonl을 읽어 전략별 컬렉션에 저장한다.
+데이터셋 (data/README.md > 평가용·서비스용 데이터 분리)
+- eval (기본값): data/chunks/eval/strategy_{a,b}.jsonl -> 컬렉션 eval-a-..., eval-b-...
+- service: data/chunks/service/strategy_b.jsonl -> 컬렉션 service-b-... (서비스 엔진은 전략 B만 쓴다)
+다른 데이터셋의 컬렉션은 건드리지 않는다.
+
+청크를 읽어 전략별 컬렉션에 저장한다.
 메타데이터는 docs/step3_metadata.md의 "벡터 DB 저장 형식"대로 변환한다.
 - 리스트(job_categories, tech_stacks)는 쉼표로 이은 문자열 (설계 원칙 3: 벡터 DB를 바꿔도 같은 형식)
 - closed_at은 문자열과 함께 정수(closed_at_int, 예: 20261014)로도 저장 (Chroma는 문자열 크기 비교 불가, 1.5.9에서 확인)
@@ -9,7 +14,7 @@ data/chunks/eval/strategy_{a,b}.jsonl을 읽어 전략별 컬렉션에 저장한
 A·B에서 본문이 같은 청크는 한 번만 임베딩한다. 사용 토큰과 비용은 eval/usage_log.csv에 쌓는다.
 
 사용법
-    .venv\\Scripts\\python.exe src\\build_index.py
+    .venv\\Scripts\\python.exe src\\build_index.py [eval|service]
 """
 
 import csv
@@ -23,20 +28,23 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 ROOT = Path(__file__).resolve().parent.parent
-CHUNKS_DIR = ROOT / "data" / "chunks" / "eval"
+CHUNKS_DIRS = {"eval": ROOT / "data" / "chunks" / "eval", "service": ROOT / "data" / "chunks" / "service"}
 CHROMA_DIR = ROOT / "chroma_db"
 USAGE_LOG = ROOT / "eval" / "usage_log.csv"
 
 EMBED_MODEL = "text-embedding-3-small"
 EMBED_PRICE_PER_1M = 0.02  # 달러, OpenAI 가격표 2026-10-02 확인
 BATCH_SIZE = 100
-STRATEGIES = {"A": "strategy_a.jsonl", "B": "strategy_b.jsonl"}
+STRATEGIES = {
+    "eval": {"A": "strategy_a.jsonl", "B": "strategy_b.jsonl"},
+    "service": {"B": "strategy_b.jsonl"},
+}
 LIST_FIELDS = ("job_categories", "tech_stacks")
 DROP_FIELDS = ("text", "status")
 
 
-def collection_name(strategy):
-    return f"eval-{strategy.lower()}-{EMBED_MODEL}"
+def collection_name(strategy, dataset="eval"):
+    return f"{dataset}-{strategy.lower()}-{EMBED_MODEL}"
 
 
 def to_metadata(chunk):
@@ -67,19 +75,20 @@ def log_usage(row):
         writer.writerow(row)
 
 
-def main():
+def main(dataset="eval"):
     load_dotenv(ROOT / ".env")
-    chunks = {s: [json.loads(line) for line in (CHUNKS_DIR / f).open(encoding="utf-8")]
-              for s, f in STRATEGIES.items()}
+    chunks = {s: [json.loads(line) for line in (CHUNKS_DIRS[dataset] / f).open(encoding="utf-8")]
+              for s, f in STRATEGIES[dataset].items()}
     unique_texts = sorted({c["text"] for cs in chunks.values() for c in cs})
-    print(f"청크 A {len(chunks['A'])}개, B {len(chunks['B'])}개 → 고유 본문 {len(unique_texts)}개 임베딩")
+    print(f"[{dataset}] " + ", ".join(f"청크 {s} {len(cs)}개" for s, cs in chunks.items())
+          + f" → 고유 본문 {len(unique_texts)}개 임베딩")
 
     vectors, tokens = embed_all(OpenAI(), unique_texts)
     vector_of = dict(zip(unique_texts, vectors))
 
     db = chromadb.PersistentClient(path=str(CHROMA_DIR))
     for strategy, cs in chunks.items():
-        name = collection_name(strategy)
+        name = collection_name(strategy, dataset)
         if name in [c.name for c in db.list_collections()]:
             db.delete_collection(name)
         col = db.create_collection(name, embedding_function=None, metadata={"hnsw:space": "cosine"})
@@ -99,10 +108,14 @@ def main():
         "입력 토큰": tokens,
         "출력 토큰": 0,
         "비용(달러)": f"{cost:.5f}",
-        "메모": f"고유 본문 {len(unique_texts)}개, 컬렉션 A {len(chunks['A'])} / B {len(chunks['B'])}",
+        "메모": f"고유 본문 {len(unique_texts)}개, 컬렉션 " + " / ".join(f"{s} {len(cs)}" for s, cs in chunks.items())
+                + ("" if dataset == "eval" else f" ({dataset})"),
     })
     print(f"임베딩 토큰 {tokens:,}개, 비용 약 ${cost:.4f} → {USAGE_LOG.relative_to(ROOT).as_posix()}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    name = sys.argv[1] if len(sys.argv) > 1 else "eval"
+    if name not in CHUNKS_DIRS:
+        sys.exit(f"데이터셋은 eval 또는 service 중 하나여야 합니다: {name}")
+    sys.exit(main(name))
