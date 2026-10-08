@@ -675,6 +675,11 @@ def run_no_context(item, client, model, judge_model, reasoning):
     }
 
 
+def eval_set_tag():
+    """기본 평가셋(eval_set.csv)이 아니면 결과 파일·설정에 붙일 평가셋 이름. 개발 문항 결과 파일을 덮어쓰지 않게 한다."""
+    return "" if EVAL_SET.name == "eval_set.csv" else f"_{EVAL_SET.stem}"
+
+
 def summarize(rows):
     def rate(vals):
         return f"{sum(vals) / len(vals):.1%}" if vals else ""
@@ -766,7 +771,11 @@ def regrade(raw_name, client, judge_model, workers):
 
 
 def main():
+    global EVAL_SET, FRESHNESS_IDS
     ap = argparse.ArgumentParser()
+    ap.add_argument("--eval-set", default="eval/eval_set.csv",
+                    help="평가셋 CSV (프로젝트 폴더 기준). 기본값이 아니면 결과 파일 이름에 평가셋 이름이 붙는다. "
+                         "최신성 문항은 평가셋의 '최신성' 열이 Y인 문항 (열이 없으면 개발 문항의 A19·A20·T04)")
     ap.add_argument("--strategy", nargs="+", default=["A", "B"])
     ap.add_argument("--top-k", type=int, default=5)
     ap.add_argument("--model", default="gpt-6-luna")
@@ -785,6 +794,9 @@ def main():
     ap.add_argument("--no-context", action="store_true", help="GPT 빈손 테스트: 공고 문서 없이 답변")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
+    EVAL_SET = ROOT / args.eval_set
+    if EVAL_SET.exists():
+        FRESHNESS_IDS = {it["id"] for it in load_csv(EVAL_SET) if it.get("최신성") == "Y"} or FRESHNESS_IDS
 
     load_dotenv(ROOT / ".env")
     client = OpenAI()
@@ -807,8 +819,8 @@ def main():
                                  items))
         add_usage(rows)
         setting = (f"문서 없음(GPT 빈손), 답변 {args.model}(reasoning {args.reasoning or '기본'}), "
-                   f"채점 {args.judge_model}, 채점 기준 {GRADING_VERSION}")
-        tag = "" if not args.ids else "_partial"
+                   f"채점 {args.judge_model}, 채점 기준 {GRADING_VERSION}" + (f", 평가셋 {EVAL_SET.stem}" if eval_set_tag() else ""))
+        tag = eval_set_tag() + ("" if not args.ids else "_partial")
         out = RESULTS_DIR / f"{date.today().isoformat()}_no-context_{args.model}{tag}.csv"
         write_results(rows, out, setting)
         report(rows, out, setting, record=not args.ids)
@@ -848,13 +860,14 @@ def main():
                        f"(reasoning {args.reasoning or '기본'}), 채점 {args.judge_model}, "
                        f"프롬프트 {args.prompt}, 채점 기준 {GRADING_VERSION}"
                        + (f", 실행 라벨 {args.label}" if args.label else "")
+                       + (f", 평가셋 {EVAL_SET.stem}" if eval_set_tag() else "")
                        + (f", 공고별 균등 검색(질문의 항목 청크 + 개요, 항목을 못 찾으면 공고당 상위 {args.per_posting}개)" if args.per_posting else "")
                        + (", 공고 선택 시 공고 전체 투입" if args.full_posting else "")
                        + (", 기술 동의어 확장" if args.synonyms else "")
                        + (", 조건 코드 필터" if args.structured else "")
                        + ((", 분류-본문 차이 표시(경력 차이는 질문이 경력·신입을 물을 때만)" if args.diff_relevant_only
                            else ", 분류-본문 차이 표시") if args.diff_notes else ""))
-            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + (f"_pp{args.per_posting}" if args.per_posting else "") + ("_p2" if args.prompt == "v2" else "") + (f"_{args.label}" if args.label else "") + ("" if not args.ids else "_partial")
+            tag = ("_full" if args.full_posting else "") + ("_syn" if args.synonyms else "") + ("_struct" if args.structured else "") + (("_diffrel" if args.diff_relevant_only else "_diff") if args.diff_notes else "") + (f"_pp{args.per_posting}" if args.per_posting else "") + ("_p2" if args.prompt == "v2" else "") + (f"_{args.label}" if args.label else "") + eval_set_tag() + ("" if not args.ids else "_partial")
             out = RESULTS_DIR / f"{date.today().isoformat()}_{strategy}_k{args.top_k}_{args.model}{tag}.csv"
             write_results(rows, out, setting)
             report(rows, out, setting, record=not args.ids)
