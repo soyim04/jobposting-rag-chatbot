@@ -63,3 +63,6 @@
 2026-10-07T17:06:31,run_eval,gpt-6-luna,17215,5758,0.00460,"재채점 2026-10-02_B_k5_gpt-6-luna.csv, 30문항"
 2026-10-07T17:24:48,run_eval,gpt-6-luna,185440,60970,0.04903,"재채점 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diff.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_p2_a.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_p2_b.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_a.csv, 2026-10-06_B_k5_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_b.csv, 2026-10-06_B_k10_gpt-6-luna_a.csv, 2026-10-06_B_k10_gpt-6-luna_b.csv, 2026-10-06_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_a.csv, 2026-10-06_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_b.csv, 300문항"
 2026-10-07T17:30:10,run_eval(추정 보정),gpt-6-luna,74176,24388,0.01961,"추정 보정: 2026-10-07 재채점 4개(기준선 A, full, full_syn, full_syn_struct, 각 30문항)의 비용. 다음 파일(diff)에서 IndexError로 멈춰 run_eval이 usage_log를 쓰지 못함. 같은 날 17:24 10개 배치의 건당 평균(입력 18544·출력 6097 토큰, $0.00490)으로 추정"
+2026-10-08T11:17:24,build_index,text-embedding-3-small,225704,0,0.00451,"고유 본문 886개, 컬렉션 B 1002 (service)"
+2026-10-08T11:18:36,extract_fields,gpt-6-luna,159093,10553,0.02119,"재택·유연근무 추출, 140건 (service)"
+2026-10-08T11:19:44,extract_fields,gpt-6-luna,83612,8989,0.01286,"본문 경력 수준 추출, 140건 (service)"
