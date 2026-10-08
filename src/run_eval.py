@@ -159,7 +159,7 @@ def normalize(text):
 def build_context(hits):
     blocks = []
     for i, (doc, meta) in enumerate(hits, start=1):
-        status = effective_status(meta["closed_at"], "진행 중", REF_DATE)
+        status = effective_status(meta["closed_at"], POSTINGS[meta["posting_id"]]["status"], REF_DATE)  # 저장 상태(조기 마감)도 반영
         body = doc.split("\n", 1)[1] if "\n" in doc else doc
         blocks.append(
             f"[근거 {i}] 공고ID {meta['posting_id']} | {meta['company']} · {meta['title']} | 항목: {meta['section']}\n"
