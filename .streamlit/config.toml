@@ -1,0 +1,14 @@
+# Streamlit 화면 테마 (src/app.py). 색은 docs/figures 그래프와 같은 파란색 계열이다.
+[theme]
+base = "light"
+primaryColor = "#2563eb"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f6fb"
+textColor = "#1f2937"
+linkColor = "#2563eb"
+borderColor = "#dbe3ef"
+baseRadius = "large"
+font = "sans-serif"
+
+[client]
+toolbarMode = "minimal"

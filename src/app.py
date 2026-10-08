@@ -77,15 +77,20 @@ def render_answer(entry):
     grouped = {}
     for s in out["sources"]:  # 같은 공고의 여러 항목은 한 줄로 묶는다
         grouped.setdefault(s["posting_id"], {**s, "sections": []})["sections"].append(s["section"])
-    with st.expander(f"근거 공고 {len(grouped)}건"):
+    with st.expander(f"근거 공고 {len(grouped)}건", icon=":material/description:"):
         if not grouped:
             st.write("답변이 표시한 근거 공고가 없습니다.")
         for s in grouped.values():
-            status = s["status"] if s["status"] == "진행 중" else f":red[{s['status']}]"
-            link = f" · [점핏에서 보기]({s['url']})" if s["url"] else ""
-            st.markdown(f"- **{s['company']}** · {s['title']} · {', '.join(s['sections'])} · 마감 {s['closed_at']} ({status}){link}")
-    st.caption(f"처리 방식: {out['mode']} · {out['latency_ms'] / 1000:.1f}초 · 약 ${out['cost_usd']:.4f}"
-               f" · 기준일 {out['ref_date']}")
+            with st.container(border=True):
+                left, right = st.columns([5, 1.4], vertical_alignment="center")
+                left.markdown(f"**{s['company']}** · {s['title']}")
+                left.caption(f"{', '.join(s['sections'])} · 마감 {s['closed_at']}")
+                with right:
+                    st.badge(s["status"], color="green" if s["status"] == "진행 중" else "red")
+                    if s["url"]:
+                        st.link_button("점핏에서 보기", s["url"], icon=":material/open_in_new:", width="stretch")
+    st.caption(f":material/schedule: {out['latency_ms'] / 1000:.1f}초 · :material/payments: 약 ${out['cost_usd']:.4f}"
+               f" · 기준일 {out['ref_date']} · 처리 방식: {out['mode']}")
     key = f"fb_{entry['log_id']}"
     st.feedback("thumbs", key=key, on_change=save_feedback, args=(entry["log_id"], key))
 
@@ -109,18 +114,23 @@ def sidebar(engine):
     filter_scope = Engine.make_scope(JOBS[job_label], newcomer)
     import run_eval as r
     ids = r.scope_ids(filter_scope)
-    show_closed = st.sidebar.checkbox("마감된 공고도 목록에 포함", help="끄면 진행 중인 공고만 고를 수 있습니다.")
-    options = [o for o in engine.posting_options()
-               if (ids is None or o["posting_id"] in ids) and (show_closed or o["status"] == "진행 중")]
+    show_closed = st.sidebar.toggle("마감된 공고도 목록에 포함", help="끄면 진행 중인 공고만 고를 수 있습니다.")
+    in_scope = [o for o in engine.posting_options() if ids is None or o["posting_id"] in ids]
+    n_open = sum(1 for o in in_scope if o["status"] == "진행 중")
+    options = [o for o in in_scope if show_closed or o["status"] == "진행 중"]
     labels = {o["posting_id"]: f"{o['company']} · {o['title']} · 마감 {o['closed_at']} ({o['status']})" for o in options}
     pid = st.sidebar.selectbox("공고 하나만 골라 묻기", [None] + list(labels), format_func=lambda x: "선택 안 함" if x is None else labels[x],
                                help="공고를 고르면 그 공고 전체를 근거로 답합니다.")
     scope = Engine.make_scope(JOBS[job_label], newcomer, pid)
     label = labels[pid] if pid else (f"{job_label}" + (" · 신입" if newcomer else "") if scope != "전체" else "전체 공고")
-    st.sidebar.caption(f"선택한 범위: {label} ({len(options)}건)" if not pid else f"선택한 공고: {label}")
+    if pid:
+        st.sidebar.caption(f"선택한 공고: {label}")
+    else:
+        st.sidebar.caption(f"선택한 범위: {label}")
+        st.sidebar.markdown(f":green-badge[진행 중 {n_open}건] :gray-badge[전체(마감 포함) {len(in_scope)}건]")
     st.sidebar.divider()
     total = sum(e["out"]["cost_usd"] for e in st.session_state.history if "out" in e)
-    st.sidebar.caption(f"이번 접속의 질문 {len(st.session_state.history)}개, 비용 약 ${total:.4f}")
+    st.sidebar.caption(f":material/chat: 이번 접속의 질문 {len(st.session_state.history)}개 · 비용 약 ${total:.4f}")
     return scope, label
 
 
@@ -154,18 +164,25 @@ def main():
 
     st.title("점핏 채용공고 Q&A")
     n_open = sum(1 for o in engine.posting_options() if o["status"] == "진행 중")
-    st.caption(f"점핏 개발자 채용공고 {len(engine.postings)}건(진행 중 {n_open}건), 기준일 {engine.ref_date}"
-               + ("" if dataset == "service" else " · 평가용 데이터(9/30 수집)로 동작 중입니다"))
+    top = st.columns(3)
+    top[0].metric("점핏 개발자 채용공고", f"{len(engine.postings)}건", border=True)
+    top[1].metric("진행 중", f"{n_open}건", border=True)
+    top[2].metric("기준일", engine.ref_date, border=True)
+    if dataset != "service":
+        st.warning("평가용 데이터(9/30 수집)로 동작 중입니다.", icon=":material/info:")
     scope, scope_label = sidebar(engine)
 
     tab_chat, tab_log = st.tabs(["질문하기", "로그"])
     with tab_chat:
         st.caption("점핏 공고 내용만 근거로 답하고, 근거 공고와 마감 여부를 함께 보여줍니다. 공고 원문은 점핏에서 확인하세요.")
         if not st.session_state.history:
-            cols = st.columns(len(examples(engine)))
-            for col, q in zip(cols, examples(engine)):
-                if col.button(q, width="stretch"):
-                    st.session_state.pending = q
+            st.markdown("##### 이런 걸 물어볼 수 있어요")
+            qs = examples(engine)
+            for start in range(0, len(qs), 3):  # 한 줄에 3개씩
+                cols = st.columns(3)
+                for col, q in zip(cols, qs[start:start + 3]):
+                    if col.button(q, width="stretch", icon=":material/search:"):
+                        st.session_state.pending = q
         for e in st.session_state.history:
             with st.chat_message("user"):
                 st.write(e["q"])
