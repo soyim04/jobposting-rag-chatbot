@@ -37,7 +37,7 @@
    - 완료: 강사님 피드백 4단계, 지시문 v2, 공고별 균등 검색, top_k 비교, 실험 로그(`docs/step6_experiment_log.md`), 그래프(`docs/figures/`). 범위 제외(안 함): 모델 변경, 임베딩 교체, 청킹 추가 비교
    - 답변 정확도 66% → 84~86%, 최신성 83% → 100% (전략 B, 채점 기준 v2). 정답지 수정(v4) 기준으로는 72% → 90~96%
 7. 서비스화 — 🔄 진행 중. Streamlit 고도화, DB 로그 저장 (`docs/step7_service.md`)
-   - 완료: 엔진(`src/rag_engine.py`), 로그 DB(`src/log_db.py`), 화면(`src/app.py`). 남음: 서비스용 데이터 재수집·색인
+   - 완료: 엔진(`src/rag_engine.py`), 로그 DB(`src/log_db.py`), 화면(`src/app.py`), 서비스용 데이터 재수집·색인·칸 추출(10/08, 사용 문서 140건)과 전환 점검(조기 마감 표시 오류 수정). 남음: 화면 직접 확인(`streamlit run src/app.py`)
 8. 최종 리포트
 
 ## 폴더 구조
