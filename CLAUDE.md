@@ -36,13 +36,14 @@
 6. 개선 — ✅ 완료. 청킹·top_k·프롬프트·모델·임베딩 교체와 반복 테스트, 실험 로그와 그래프
    - 완료: 강사님 피드백 4단계, 지시문 v2, 공고별 균등 검색, top_k 비교, 실험 로그(`docs/step6_experiment_log.md`), 그래프(`docs/figures/`). 범위 제외(안 함): 모델 변경, 임베딩 교체, 청킹 추가 비교
    - 답변 정확도 66% → 84~86%, 최신성 83% → 100% (전략 B, 채점 기준 v2). 정답지 수정(v4) 기준으로는 72% → 90~96%
-7. 서비스화 — 🔄 진행 중. Streamlit 고도화, DB 로그 저장 (`docs/step7_service.md`)
-   - 완료: 엔진(`src/rag_engine.py`), 로그 DB(`src/log_db.py`), 화면(`src/app.py`), 서비스용 데이터 재수집·색인·칸 추출(10/08, 사용 문서 140건)과 전환 점검(조기 마감 표시 오류 수정). 남음: 화면 직접 확인(`streamlit run src/app.py`)
-8. 최종 리포트
+7. 서비스화 — ✅ 완료. Streamlit 고도화, DB 로그 저장 (`docs/step7_service.md`)
+   - 엔진(`src/rag_engine.py`), 로그 DB(`src/log_db.py`), 화면(`src/app.py`), 서비스용 데이터 재수집·색인·칸 추출(10/08, 사용 문서 140건), 전환 점검(조기 마감 표시 오류 수정), 화면 개편과 직접 확인
+8. 최종 측정·리포트 — 🔄 진행 중 (`docs/step8_final_measurement.md`)
+   - 완료: 코드 동결(`a990a4b`, 태그 `freeze-final`), 홀드아웃 15문항 잠금(`a1339dc`), 최종 측정 (답변 정확도: GPT 빈손 12.0% → 고치기 전 72.0% → 고친 후 개발 문항 94.0·96.0% / 홀드아웃 88.5%, 채점 기준 v4). 남음: 최종 리포트
 
 ## 폴더 구조
 
-- `docs/proposal.pdf` 제안서 · `eval/eval_set.csv` 평가셋 30문항 (`eval/README.md` 채점 기준) · `eval/eval_set.xlsx` 초안(이력용)
+- `docs/proposal.pdf` 제안서 · `eval/eval_set.csv` 평가셋 30문항 (`eval/README.md` 채점 기준) · `eval/eval_set.xlsx` 초안(이력용) · `eval/holdout_set.csv` 홀드아웃 15문항 (최종 측정용, 잠금 후 수정 금지)
 - `src/collect_jumpit.py` 점핏 수집 스크립트
 - `src/posting_status.py` 오늘 날짜 기준 마감 여부 판정 (`effective_status`)
 - `src/rag_engine.py` 질문 1개 처리 엔진 · `src/app.py` Streamlit 화면 (`streamlit run src/app.py`) · `src/log_db.py` 질문 로그(SQLite, 비공개 `data/service_log.db`) · `src/check_engine.py` 엔진 회귀 점검
@@ -66,6 +67,7 @@
 - 평가셋은 9/30 스냅샷 기준 30문항으로 재구성했다 (`eval/eval_set.csv`, 초안 34문항에서 바뀐 점은 `eval/README.md`).
 - 평가 기준일은 **2026-10-02**로 고정한다. 마감 여부는 `effective_status(..., "2026-10-02")`로 판정한다.
 - 지표 우선순위: 최신성(마감 여부) > 출처 정확도 > 답변 정확도 > 검색 정확도
+- **코드 동결**: 커밋 `a990a4b`(태그 `freeze-final`) 이후 검색·프롬프트·규칙(`src/run_eval.py`, `src/rag_engine.py`, `src/build_index.py`, `src/chunk_postings.py`, `src/extract_fields.py`, `src/posting_status.py`, `data/tech_synonyms.json`, `data/posting_fields_eval.csv`)을 고치지 않는다. 채점 기준은 v4로 동결하고, 홀드아웃(`eval/holdout_set.csv`)은 한 번만 측정했으며 결과를 보고 고치지 않는다 (`docs/step8_final_measurement.md`).
 
 ## 환경
 
