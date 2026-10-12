@@ -10,7 +10,7 @@
 | 5 오답노트 | 완료 | `docs/step5_error_notes.md` (틀린 13문항을 검색 실패 8·생성 왜곡 5로 분류, 점수 손실의 71%가 검색 실패) |
 | 6 개선 | 완료 | 이 문서, `docs/step6_experiments.md` |
 | 7 서비스화 | 완료 | `docs/step7_service.md` (엔진·로그 DB·Streamlit 화면, 서비스용 재수집·색인·칸 추출, 화면 직접 확인 완료) |
-| 8 최종 측정·리포트 | **진행 중** | `docs/step8_final_measurement.md` (최종 측정 완료. 최종 리포트 남음) |
+| 8 최종 측정·리포트 | 완료 | `docs/step8_final_measurement.md`(최종 측정), `docs/step8_final_report.md`(최종 리포트) |
 
 6단계에서 `CLAUDE.md`가 요구하는 항목의 진행 상태
 
@@ -118,7 +118,7 @@
 |---|---|
 | 틀리는 문항 | 정답지 수정(v4) 기준 6단계에서 남은 건 두 문항이다. A16(서버 개발 공고만 골라 종합 → 오답노트 7단계: 직무 분류와 본문 차이, 부분/오답), A05(추론했다는 사실을 밝히지 않음, 부분/부분). A03·A04·A09·A14는 정답지를 고쳐서 풀렸고(모델 개선 효과 아님), A17은 6단계에서 풀렸다. T03은 한 실행(b)만 부분이라 노이즈로 본다 |
 | 7단계 | 없음 (서비스용 데이터 재수집·색인·칸 추출·앱 전환·화면 확인 모두 2026-10-08에 완료, `docs/step7_service.md`) |
-| 8단계 | 최종 리포트 (최종 측정은 완료, `docs/step8_final_measurement.md`) |
+| 8단계 | 없음 (최종 측정 `docs/step8_final_measurement.md`과 최종 리포트 `docs/step8_final_report.md` 모두 완료) |
 
 ## 6. 산출물 위치
 
