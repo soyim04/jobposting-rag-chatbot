@@ -164,10 +164,16 @@ def main():
 
     st.title("점핏 채용공고 Q&A")
     n_open = sum(1 for o in engine.posting_options() if o["status"] == "진행 중")
-    top = st.columns(3)
+    collected = max((p.get("last_seen") or "" for p in engine.postings.values()), default="")
+    top = st.columns(4)
     top[0].metric("점핏 개발자 채용공고", f"{len(engine.postings)}건", border=True)
     top[1].metric("진행 중", f"{n_open}건", border=True)
-    top[2].metric("기준일", engine.ref_date, border=True)
+    top[2].metric("데이터 수집일", collected or "-", border=True)
+    top[3].metric("마감 판정 기준일", engine.ref_date, border=True)
+    if dataset == "service" and collected and collected != engine.ref_date:
+        st.info(f"공고 데이터는 {collected}에 수집했습니다. 마감일은 오늘({engine.ref_date}) 기준으로 판정하지만, "
+                f"{collected} 이후 새로 올라온 공고와 조기 마감·내용 수정은 반영되지 않았습니다.",
+                icon=":material/info:")
     if dataset != "service":
         st.warning("평가용 데이터(9/30 수집)로 동작 중입니다.", icon=":material/info:")
     scope, scope_label = sidebar(engine)
