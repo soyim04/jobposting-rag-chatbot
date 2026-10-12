@@ -13,7 +13,7 @@
 | 5. 오답노트 | ✅ 완료 | [오답노트](docs/step5_error_notes.md) |
 | 6. 개선 | ✅ 완료 | [실험 로그](docs/step6_experiment_log.md) · 그래프 `docs/figures/` |
 | 7. 서비스화 | ✅ 완료 | [서비스화 기록](docs/step7_service.md) |
-| 8. 최종 측정·리포트 | 🔄 최종 측정 완료, 리포트 작성 중 | [최종 측정](docs/step8_final_measurement.md) |
+| 8. 최종 측정·리포트 | ✅ 완료 | [최종 리포트](docs/step8_final_report.md) · [최종 측정](docs/step8_final_measurement.md) |
 
 ## 결과 요약
 
@@ -29,7 +29,7 @@
 - 홀드아웃은 코드를 동결(`freeze-final`)하고 문항을 잠근 뒤 한 번만 측정했고, 결과를 보고 고치지 않았습니다.
 - 홀드아웃에서 틀린 2문항은 같은 회사에 공고가 여러 개일 때 검색이 정답 공고를 놓친 경우입니다. 둘 다 지어내지 않고 "확인되지 않는다"로 답했고, 고치지 않고 한계로 남겼습니다.
 - 채점은 AI(gpt-6-luna)가 했고, 홀드아웃 15문항은 사람이 모두 확인해 판정이 일치했습니다 (15/15).
-- 자세한 숫자와 읽는 법은 [최종 측정](docs/step8_final_measurement.md)에 있습니다.
+- 전체 과정은 [최종 리포트](docs/step8_final_report.md)에, 자세한 숫자와 읽는 법은 [최종 측정](docs/step8_final_measurement.md)에 있습니다.
 
 ## 문서
 
@@ -86,6 +86,7 @@
 │   ├── step6_experiment_log.md  # 실험 로그
 │   ├── step7_service.md         # 서비스화 기록
 │   ├── step8_final_measurement.md  # 최종 측정
+│   ├── step8_final_report.md    # 최종 리포트 (전체 과정 정리)
 │   └── figures/                 # 그래프
 ├── eval/
 │   ├── README.md                # 평가셋 설명과 채점 기준
