@@ -128,7 +128,6 @@
 | 문서 | `docs/step5_error_notes.md`, `docs/step6_experiments.md`, 이 문서, `eval/README.md` |
 | 결과·비용 | `eval/results/`, `eval/results/summary.csv`, `eval/usage_log.csv` |
 | 그래프 | `docs/figures/stage_scores.svg`, `item_heatmap.svg`, `top_k_retrieval.svg` |
-| 보고서 | Claude Docs "피드백 반영 개선 실험 결과" (0~4단계 그래프 포함) |
 
 ## 7. 채점 기준 변경 기록 (v1 → v2 → v4)
 
