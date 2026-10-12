@@ -1,10 +1,11 @@
 """6단계 그래프 생성 (SVG, 외부 패키지 없음).
 
-결과 CSV(eval/results/)에서 숫자를 읽어 docs/figures/에 그림 3개를 만든다.
+결과 CSV(eval/results/)에서 숫자를 읽어 docs/figures/에 그림 4개를 만든다.
 정답지 수정 뒤(채점 기준 v4)를 기본으로 하고, stage_scores는 수정 전(v2)을 같이 그린다.
 1. stage_scores.svg     : 단계별 답변 정확도 v2 → v4와 최신성 (5·6단계·top_k=10은 2회 실행의 평균과 각 값)
 2. item_heatmap.svg     : 오답노트 13문항의 단계별 판정 (v4)
 3. top_k_retrieval.svg  : top_k별 검색 적중률 (eval/results/topk_retrieval.csv)
+4. final_measurement.svg: 8단계 최종 측정 (GPT 빈손 · 고치기 전 · 고친 후 개발 문항·홀드아웃의 답변 정확도, v4)
 
 사용법
     .venv\\Scripts\\python.exe src\\make_figures.py
@@ -228,10 +229,83 @@ def fig_topk():
     return svg(W, H, "top_k별 검색 적중률", "".join(b), "top_k 3, 5, 10, 20에서 질문 그대로와 동의어 확장의 검색 적중률")
 
 
+FINAL_RUNS = {  # 8단계 최종 측정 (docs/step8_final_measurement.md 5.1절)
+    "empty": "2026-10-02_no-context_gpt-6-luna_grade-v4.csv",
+    "before": "2026-10-02_B_k5_gpt-6-luna_grade-v4.csv",
+    "dev_a": "2026-10-08_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_a.csv",
+    "dev_b": "2026-10-08_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_b.csv",
+    "holdout": "2026-10-08_B_k10_gpt-6-luna_full_syn_struct_diffrel_pp2_p2_h_holdout_set.csv",
+}
+TEAL = "#0f766e"
+LIGHT_BLUE = "#93c5fd"
+
+
+def verdict_counts(rows):
+    """답변 판정이 있는 문항의 (정답, 부분, 오답) 개수."""
+    v = [r["답변 판정"] for r in rows.values() if r["답변 판정"]]
+    return v.count("정답"), v.count("부분"), v.count("오답")
+
+
+def halo(x, y, s, size=13, fill=INK, weight="normal", anchor="middle"):
+    """눈금선과 겹쳐도 읽히도록 흰 테두리를 두른 글자."""
+    return (f"<text x='{x}' y='{y}' font-size='{size}' fill='{fill}' text-anchor='{anchor}' font-weight='{weight}' "
+            f"stroke='white' stroke-width='4' paint-order='stroke' stroke-linejoin='round'>{escape(s)}</text>")
+
+
+def fig_final_measurement():
+    runs = {k: load(f) for k, f in FINAL_RUNS.items()}
+    acc = {k: accuracy(r) for k, r in runs.items()}
+    cnt = {k: verdict_counts(r) for k, r in runs.items()}
+    n_hold = sum(cnt["holdout"])
+    W, H, ytop, ybot = 1000, 500, 110, 380
+    Y = lambda v: ybot - v / 100 * (ybot - ytop)
+    # (이름, 색, 키, 막대 중심 x)
+    groups = [("GPT 빈손", GREY, "empty", 150),
+              ("고치기 전", LIGHT_BLUE, "before", 360),
+              ("고친 후 (개발 문항)", BLUE, "dev", 630),
+              ("고친 후 (새 문항, 홀드아웃)", TEAL, "holdout", 870)]
+    lo_dev, hi_dev = min(acc["dev_a"], acc["dev_b"]), max(acc["dev_a"], acc["dev_b"])
+    acc["dev"] = (acc["dev_a"] + acc["dev_b"]) / 2   # 같은 설정 2회의 평균
+    b = [text(40, 34, f"답변 정확도: {acc['empty']:.0f}% → {acc['before']:.0f}% → {lo_dev:.0f}–{hi_dev:.0f}%, 새 문항(홀드아웃)에서도 {acc['holdout']:.1f}%", 18, INK, weight="bold")]
+    b.append(text(40, 60, "채점 기준 v4, 정답 1 · 부분 0.5 · 오답 0의 평균. 고친 후 개발 문항의 흰 점은 같은 설정 2회의 각 실행(a, b)", 13, MUTED))
+    for v in range(0, 101, 20):
+        b.append(f"<line x1='80' x2='960' y1='{Y(v)}' y2='{Y(v)}' stroke='{GRID}'/>")
+        b.append(text(72, Y(v) + 4, f"{v}%", 11, MUTED, "end"))
+    b.append(f"<line x1='80' x2='960' y1='{ybot}' y2='{ybot}' stroke='#9ca3af'/>")
+    w = 90
+    for name, color, key, cx in groups:
+        if key == "dev":
+            tip = f"{name} · 평균 {acc[key]:.1f}% (a {acc['dev_a']:.1f}% · b {acc['dev_b']:.1f}%)"
+        else:
+            tip = f"{name} · {acc[key]:.1f}% (정답 {cnt[key][0]} · 부분 {cnt[key][1]} · 오답 {cnt[key][2]})"
+        b.append(f"<rect x='{cx - w / 2}' y='{Y(acc[key])}' width='{w}' height='{ybot - Y(acc[key])}' fill='{color}'><title>{escape(tip)}</title></rect>")
+        if key == "dev":
+            for run, dx in (("dev_a", -16), ("dev_b", 16)):   # 각 실행은 흰 점
+                b.append(f"<circle cx='{cx + dx}' cy='{Y(acc[run])}' r='5' fill='white' stroke='{BLUE}' stroke-width='2'>"
+                         f"<title>{run[-1]}: {acc[run]:.1f}%</title></circle>")
+            b.append(halo(cx, Y(hi_dev) - 24, f"평균 {acc[key]:.1f}%", 14, INK, "bold"))
+            b.append(halo(cx, Y(hi_dev) - 9, f"(a {acc['dev_a']:.1f} · b {acc['dev_b']:.1f})", 12, MUTED))
+        else:
+            b.append(halo(cx, Y(acc[key]) - 8, f"{acc[key]:.1f}%", 14, INK, "bold"))
+        b.append(text(cx, ybot + 24, name, 13, INK, "middle", "bold"))
+        keys = ["dev_a", "dev_b"] if key == "dev" else [key]
+        for i, k in enumerate(keys):
+            label = f"{'ab'[i]}: " if key == "dev" else ""
+            b.append(text(cx, ybot + 44 + 16 * i, f"{label}정답 {cnt[k][0]} · 부분 {cnt[k][1]} · 오답 {cnt[k][2]}", 12, MUTED, "middle"))
+    d1 = acc["before"] - acc["empty"]
+    d2lo, d2hi = lo_dev - acc["before"], hi_dev - acc["before"]
+    b.append(halo(255, Y(acc["before"]) - 8, f"+{d1:.0f}%p", 13, BLUE, "bold"))
+    b.append(halo(495, Y(acc["dev"]) - 8, f"+{d2lo:.0f}–{d2hi:.0f}%p", 13, BLUE, "bold"))
+    b.append(text(40, H - 32, "개발 문항은 정답형·함정 25개이고, 고친 후 막대는 같은 설정 2회(a, b)의 평균이다. 홀드아웃은 코드 동결 뒤 새로 쓴 문항을 1회만 측정했다.", 12, MUTED))
+    b.append(text(40, H - 12, f"홀드아웃은 채점 대상이 {n_hold}개라 한 문항이 {100 / n_hold:.1f}%p를 움직인다. 개발 문항과의 차이는 한 문항 안팎이라 크기를 확정하지 않는다.", 12, MUTED))
+    return svg(W, H, "최종 측정: 답변 정확도 비교", "".join(b),
+               "GPT 빈손, 고치기 전, 고친 후 개발 문항(2회 평균), 고친 후 홀드아웃의 답변 정확도 막대 그래프")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in (("stage_scores.svg", fig_stage_scores), ("item_heatmap.svg", fig_heatmap),
-                     ("top_k_retrieval.svg", fig_topk)):
+                     ("top_k_retrieval.svg", fig_topk), ("final_measurement.svg", fig_final_measurement)):
         (OUT / name).write_text(fn(), encoding="utf-8")
         print("→", (OUT / name).relative_to(ROOT).as_posix())
 
